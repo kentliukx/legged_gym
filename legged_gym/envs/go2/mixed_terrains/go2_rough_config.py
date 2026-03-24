@@ -30,7 +30,7 @@
 
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-class AnymalCRoughCfg( LeggedRobotCfg ):
+class GO2RoughCfg( LeggedRobotCfg ):
     class env( LeggedRobotCfg.env ):
         num_envs = 4096
         num_actions = 12
@@ -39,57 +39,46 @@ class AnymalCRoughCfg( LeggedRobotCfg ):
         mesh_type = 'trimesh'
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.6] # x,y,z [m]
+        pos = [0.0, 0.0, 0.3] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
-            "LF_HAA": 0.0,
-            "LH_HAA": 0.0,
-            "RF_HAA": -0.0,
-            "RH_HAA": -0.0,
-
-            "LF_HFE": 0.4,
-            "LH_HFE": -0.4,
-            "RF_HFE": 0.4,
-            "RH_HFE": -0.4,
-
-            "LF_KFE": -0.8,
-            "LH_KFE": 0.8,
-            "RF_KFE": -0.8,
-            "RH_KFE": 0.8,
+            "FL_thigh_joint": 0.8, "FL_hip_joint": 0.3, "FL_calf_joint": -1.6,
+            "FR_thigh_joint": 0.8, "FR_hip_joint": -0.3, "FR_calf_joint": -1.6,
+            "RL_thigh_joint": 0.8, "RL_hip_joint": 0.3, "RL_calf_joint": -1.6,
+            "RR_thigh_joint": 0.8, "RR_hip_joint": -0.3, "RR_calf_joint": -1.6
         }
 
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
-        stiffness = {'HAA': 80., 'HFE': 80., 'KFE': 80.}  # [N*m/rad]
-        damping = {'HAA': 2., 'HFE': 2., 'KFE': 2.}     # [N*m*s/rad]
+        stiffness = {'.*_joint': 25}  # [N*m/rad]
+        damping = {'.*_joint': 0.5}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
-        action_scale = 0.5
+        action_scale = 1
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
-        use_actuator_network = True
-        actuator_net_file = "{LEGGED_GYM_ROOT_DIR}/resources/actuator_nets/anydrive_v3_lstm.pt"
+        use_actuator_network = False
 
     class asset( LeggedRobotCfg.asset ):
-        file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/anymal_c/urdf/anymal_c.urdf"
-        name = "anymal_c"
-        foot_name = "FOOT"
-        penalize_contacts_on = ["SHANK", "THIGH"]
+        file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf"
+        name = "go2"
+        foot_name = ".*calf"
+        penalize_contacts_on = [".*thigh", ".*hip"]
         terminate_after_contacts_on = ["base"]
         self_collisions = 1 # 1 to disable, 0 to enable...bitwise filter
 
     class domain_rand( LeggedRobotCfg.domain_rand):
-        randomize_base_mass = True
-        added_mass_range = [-5., 5.]
+        randomize_friction = False
+        randomize_base_mass = False
+        push_robots = False
   
     class rewards( LeggedRobotCfg.rewards ):
-        base_height_target = 0.5
-        orientation = 1
+        base_height_target = 0.3
         max_contact_force = 500.
         only_positive_rewards = True
         class scales( LeggedRobotCfg.rewards.scales ):
             pass
 
-class AnymalCRoughCfgPPO( LeggedRobotCfgPPO ):
+class GO2RoughCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        experiment_name = 'rough_anymal_c'
+        experiment_name = 'go2_rough'
         load_run = -1
