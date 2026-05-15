@@ -42,12 +42,32 @@ class GO2FlatCfg( GO2RoughCfg ):
         self_collisions = 1 # 1 to disable, 0 to enable...bitwise filter
 
     class rewards( GO2RoughCfg.rewards ):
-        max_contact_force = 350.
-        class scales ( GO2RoughCfg.rewards.scales ):
+        class scales:
+            alive = 5.0
+            termination = -0.0
+            tracking_lin_vel = 1.0
+            tracking_ang_vel = 0.5
+            lin_vel_z = -2.0
+            ang_vel_xy = -0.01
             orientation = -5.0
-            torques = -0.000025
-            feet_air_time = 2.
-            # feet_contact_forces = -0.01
+            torques = -2.5e-5
+            dof_vel = -0.
+            dof_acc = -5e-8
+            dof_pos_limits = -5
+            base_height = -100
+            feet_air_time = 1.0
+            collision = -1.
+            feet_stumble = -0.0 
+            action_rate = -0.01
+            stand_still = -0.
+
+        only_positive_rewards = False # if true negative total rewards are clipped at zero (avoids early termination problems)
+        tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
+        soft_dof_pos_limit = 0.9 # percentage of urdf limits, values above this limit are penalized
+        soft_dof_vel_limit = 1.
+        soft_torque_limit = 1.
+        base_height_target = 0.3
+        max_contact_force = 350. # forces above this value are penalized
     
     class commands( GO2RoughCfg.commands ):
         heading_command = False

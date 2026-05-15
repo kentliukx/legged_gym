@@ -49,8 +49,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
 
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
-        stiffness = {'.*_joint': 25}  # [N*m/rad]
-        damping = {'.*_joint': 0.5}     # [N*m*s/rad]
+        stiffness = {'joint': 25}  # [N*m/rad]
+        damping = {'joint': 0.5}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 1
         # decimation: Number of control action updates @ sim DT per policy DT
@@ -60,10 +60,10 @@ class GO2RoughCfg( LeggedRobotCfg ):
     class asset( LeggedRobotCfg.asset ):
         file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf"
         name = "go2"
-        foot_name = ".*calf"
-        penalize_contacts_on = [".*thigh", ".*hip"]
-        terminate_after_contacts_on = ["base"]
-        self_collisions = 1 # 1 to disable, 0 to enable...bitwise filter
+        foot_name = "calf"
+        penalize_contacts_on = ["thigh", "hip"]
+        terminate_after_contacts_on = ["base", "Head_upper", "Head_lower"]
+        self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
 
     class domain_rand( LeggedRobotCfg.domain_rand):
         randomize_friction = False

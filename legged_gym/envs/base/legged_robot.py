@@ -813,6 +813,10 @@ class LeggedRobot(BaseTask):
         return heights.view(self.num_envs, -1) * self.terrain.cfg.vertical_scale
 
     #------------ reward functions----------------
+    def _reward_alive(self):
+        # Reward for being alive
+        return torch.ones(self.num_envs, device=self.device)
+    
     def _reward_lin_vel_z(self):
         # Penalize z axis base linear velocity
         return torch.square(self.base_lin_vel[:, 2])
@@ -878,6 +882,10 @@ class LeggedRobot(BaseTask):
         # Tracking of angular velocity commands (yaw) 
         ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
         return torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma)
+
+    def _reward_foot_slip(self):
+        # Penalize foot slip by looking at the horizontal contact forces of the feet
+        return torch.sum(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=-1) > self.cfg.rewards.foot_slip_threshold, dim=1)
 
     def _reward_feet_air_time(self):
         # Reward long steps
