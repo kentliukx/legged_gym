@@ -29,15 +29,31 @@
 # Copyright (c) 2021 ETH Zurich, Nikita Rudin
 
 import numpy as np
-from numpy.random import choice
-from scipy import interpolate
 
-from isaacgym import terrain_utils
+from legged_gym import LEGGED_GYM_ROOT_DIR
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg
+
+
+def _cfg_to_dict(cfg):
+    """Convert nested config objects used by BaseConfig into plain dictionaries."""
+    if cfg is None:
+        return {}
+    if isinstance(cfg, dict):
+        return dict(cfg)
+
+    result = {}
+    for key in dir(cfg):
+        if key.startswith("__"):
+            continue
+        value = getattr(cfg, key)
+        if callable(value):
+            continue
+        result[key] = value
+    return result
+
 
 class Terrain:
     def __init__(self, cfg: LeggedRobotCfg.terrain, num_robots) -> None:
-
         self.cfg = cfg
         self.num_robots = num_robots
         self.type = cfg.mesh_type
@@ -45,7 +61,6 @@ class Terrain:
             return
         self.env_length = cfg.terrain_length
         self.env_width = cfg.terrain_width
-        self.proportions = [np.sum(cfg.terrain_proportions[:i+1]) for i in range(len(cfg.terrain_proportions))]
 
         self.cfg.num_sub_terrains = cfg.num_rows * cfg.num_cols
         self.env_origins = np.zeros((cfg.num_rows, cfg.num_cols, 3))
@@ -57,131 +72,340 @@ class Terrain:
         self.tot_cols = int(cfg.num_cols * self.width_per_env_pixels) + 2 * self.border
         self.tot_rows = int(cfg.num_rows * self.length_per_env_pixels) + 2 * self.border
 
-        self.height_field_raw = np.zeros((self.tot_rows , self.tot_cols), dtype=np.int16)
-        if cfg.curriculum:
-            self.curiculum()
-        elif cfg.selected:
-            self.selected_terrain()
-        else:    
-            self.randomized_terrain()   
-        
+        self.height_field_raw = np.zeros((self.tot_rows, self.tot_cols), dtype=np.int16)
+        self.vertices = None
+        self.triangles = None
+
+        terrain_kwargs = _cfg_to_dict(self.cfg.terrain_kwargs)
+        self._selected_ladder_bars_terrain(**terrain_kwargs)
+
         self.heightsamples = self.height_field_raw
-        if self.type=="trimesh":
-            self.vertices, self.triangles = terrain_utils.convert_heightfield_to_trimesh(   self.height_field_raw,
-                                                                                            self.cfg.horizontal_scale,
-                                                                                            self.cfg.vertical_scale,
-                                                                                            self.cfg.slope_treshold)
-    
-    def randomized_terrain(self):
+
+    def _selected_ladder_bars_terrain(self,
+                                      bar_mesh_file,
+                                      bar_spacing=0.3,
+                                      bar_count=10,
+                                      ladder_angle=0.0,
+                                      platform_length=1.0,
+                                      platform_width=1.2,
+                                      platform_gap=0.1,
+                                      difficulty=1.0,
+                                      ):
+        bar_vertices, bar_triangles = load_stl_mesh(bar_mesh_file)
+        all_vertices = []
+        all_triangles = []
+        row_cache = {}
+        vertex_offset = 0
+
+        # Add one ground mesh for the full terrain grid. The ladder mesh is
+        # tiled per environment, but the flat floor does not need duplicates.
+        ground_vertices = []
+        ground_triangles = []
+        _append_ground_mesh(
+            ground_vertices,
+            ground_triangles,
+            env_length=self.tot_rows * self.cfg.horizontal_scale,
+            env_width=self.tot_cols * self.cfg.horizontal_scale)
+        all_vertices.append(np.asarray(ground_vertices, dtype=np.float32))
+        all_triangles.append(np.asarray(ground_triangles, dtype=np.uint32))
+        vertex_offset += 4
+
         for k in range(self.cfg.num_sub_terrains):
-            # Env coordinates in the world
             (i, j) = np.unravel_index(k, (self.cfg.num_rows, self.cfg.num_cols))
 
-            choice = np.random.uniform(0, 1)
-            difficulty = np.random.choice([0.5, 0.75, 0.9])
-            terrain = self.make_terrain(choice, difficulty)
-            self.add_terrain_to_map(terrain, i, j)
-        
-    def curiculum(self):
-        for j in range(self.cfg.num_cols):
-            for i in range(self.cfg.num_rows):
-                difficulty = i / self.cfg.num_rows
-                choice = j / self.cfg.num_cols + 0.001
+            # Curriculum only changes by row, so all columns in the same row
+            # reuse one generated ladder and one height field.
+            if i not in row_cache:
+                row_difficulty = i / (self.cfg.num_rows - 1) if self.cfg.curriculum and self.cfg.num_rows > 1 else difficulty
+                bar_centers, prepared_bar_vertices, local_vertices, local_triangles = generate_ladder_bar_mesh(
+                    env_length=self.env_length,
+                    env_width=self.env_width,
+                    difficulty=row_difficulty,
+                    bar_spacing=bar_spacing,
+                    bar_count=bar_count,
+                    ladder_angle=ladder_angle,
+                    platform_length=platform_length,
+                    platform_width=platform_width,
+                    platform_gap=platform_gap,
+                    bar_vertices=bar_vertices,
+                    bar_triangles=bar_triangles)
 
-                terrain = self.make_terrain(choice, difficulty)
-                self.add_terrain_to_map(terrain, i, j)
+                # Height scan is intentionally simple: inside a bar/platform XY
+                # range means returning the bar center/platform top height.
+                local_height_field = rasterize_ladder_bars(
+                    horizontal_scale=self.cfg.horizontal_scale,
+                    vertical_scale=self.cfg.vertical_scale,
+                    num_rows=self.length_per_env_pixels,
+                    num_cols=self.width_per_env_pixels,
+                    bar_centers=bar_centers,
+                    bar_vertices=prepared_bar_vertices,
+                    platform_length=platform_length,
+                    platform_width=platform_width,
+                    platform_gap=platform_gap)
+                row_cache[i] = (local_vertices, local_triangles, local_height_field)
 
-    def selected_terrain(self):
-        terrain_type = self.cfg.terrain_kwargs.pop('type')
-        for k in range(self.cfg.num_sub_terrains):
-            # Env coordinates in the world
-            (i, j) = np.unravel_index(k, (self.cfg.num_rows, self.cfg.num_cols))
+            local_vertices, local_triangles, local_height_field = row_cache[i]
 
-            terrain = terrain_utils.SubTerrain("terrain",
-                              width=self.width_per_env_pixels,
-                              length=self.width_per_env_pixels,
-                              vertical_scale=self.vertical_scale,
-                              horizontal_scale=self.horizontal_scale)
+            start_x = self.border + i * self.length_per_env_pixels
+            start_y = self.border + j * self.width_per_env_pixels
+            self.height_field_raw[
+                start_x:start_x + self.length_per_env_pixels,
+                start_y:start_y + self.width_per_env_pixels] = local_height_field
 
-            eval(terrain_type)(terrain, **self.cfg.terrain_kwargs.terrain_kwargs)
-            self.add_terrain_to_map(terrain, i, j)
-    
-    def make_terrain(self, choice, difficulty):
-        terrain = terrain_utils.SubTerrain(   "terrain",
-                                width=self.width_per_env_pixels,
-                                length=self.width_per_env_pixels,
-                                vertical_scale=self.cfg.vertical_scale,
-                                horizontal_scale=self.cfg.horizontal_scale)
-        slope = difficulty * 0.4
-        step_height = 0.05 + 0.18 * difficulty
-        discrete_obstacles_height = 0.05 + difficulty * 0.2
-        stepping_stones_size = 1.5 * (1.05 - difficulty)
-        stone_distance = 0.05 if difficulty==0 else 0.1
-        gap_size = 1. * difficulty
-        pit_depth = 1. * difficulty
-        if choice < self.proportions[0]:
-            if choice < self.proportions[0]/ 2:
-                slope *= -1
-            terrain_utils.pyramid_sloped_terrain(terrain, slope=slope, platform_size=3.)
-        elif choice < self.proportions[1]:
-            terrain_utils.pyramid_sloped_terrain(terrain, slope=slope, platform_size=3.)
-            terrain_utils.random_uniform_terrain(terrain, min_height=-0.05, max_height=0.05, step=0.005, downsampled_scale=0.2)
-        elif choice < self.proportions[3]:
-            if choice<self.proportions[2]:
-                step_height *= -1
-            terrain_utils.pyramid_stairs_terrain(terrain, step_width=0.31, step_height=step_height, platform_size=3.)
-        elif choice < self.proportions[4]:
-            num_rectangles = 20
-            rectangle_min_size = 1.
-            rectangle_max_size = 2.
-            terrain_utils.discrete_obstacles_terrain(terrain, discrete_obstacles_height, rectangle_min_size, rectangle_max_size, num_rectangles, platform_size=3.)
-        elif choice < self.proportions[5]:
-            terrain_utils.stepping_stones_terrain(terrain, stone_size=stepping_stones_size, stone_distance=stone_distance, max_height=0., platform_size=4.)
-        elif choice < self.proportions[6]:
-            gap_terrain(terrain, gap_size=gap_size, platform_size=3.)
-        else:
-            pit_terrain(terrain, depth=pit_depth, platform_size=4.)
-        
-        return terrain
+            env_origin_x = (i + 0.5) * self.env_length
+            env_origin_y = (j + 0.5) * self.env_width
+            x1 = int((self.env_length / 2. - 1) / self.cfg.horizontal_scale)
+            x2 = int((self.env_length / 2. + 1) / self.cfg.horizontal_scale)
+            y1 = int((self.env_width / 2. - 1) / self.cfg.horizontal_scale)
+            y2 = int((self.env_width / 2. + 1) / self.cfg.horizontal_scale)
+            env_origin_z = np.max(local_height_field[x1:x2, y1:y2]) * self.cfg.vertical_scale
+            self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
 
-    def add_terrain_to_map(self, terrain, row, col):
-        i = row
-        j = col
-        # map coordinate system
-        start_x = self.border + i * self.length_per_env_pixels
-        end_x = self.border + (i + 1) * self.length_per_env_pixels
-        start_y = self.border + j * self.width_per_env_pixels
-        end_y = self.border + (j + 1) * self.width_per_env_pixels
-        self.height_field_raw[start_x: end_x, start_y:end_y] = terrain.height_field_raw
+            # Move the local ladder tile into its global terrain-grid position.
+            world_vertices = np.copy(local_vertices)
+            world_vertices[:, 0] += start_x * self.cfg.horizontal_scale
+            world_vertices[:, 1] += start_y * self.cfg.horizontal_scale
+            all_vertices.append(world_vertices)
+            all_triangles.append(local_triangles + vertex_offset)
+            vertex_offset += local_vertices.shape[0]
 
-        env_origin_x = (i + 0.5) * self.env_length
-        env_origin_y = (j + 0.5) * self.env_width
-        x1 = int((self.env_length/2. - 1) / terrain.horizontal_scale)
-        x2 = int((self.env_length/2. + 1) / terrain.horizontal_scale)
-        y1 = int((self.env_width/2. - 1) / terrain.horizontal_scale)
-        y2 = int((self.env_width/2. + 1) / terrain.horizontal_scale)
-        env_origin_z = np.max(terrain.height_field_raw[x1:x2, y1:y2])*terrain.vertical_scale
-        self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
+        self.vertices = np.concatenate(all_vertices, axis=0).astype(np.float32)
+        self.triangles = np.concatenate(all_triangles, axis=0).astype(np.uint32)
 
-def gap_terrain(terrain, gap_size, platform_size=1.):
-    gap_size = int(gap_size / terrain.horizontal_scale)
-    platform_size = int(platform_size / terrain.horizontal_scale)
 
-    center_x = terrain.length // 2
-    center_y = terrain.width // 2
-    x1 = (terrain.length - platform_size) // 2
-    x2 = x1 + gap_size
-    y1 = (terrain.width - platform_size) // 2
-    y2 = y1 + gap_size
-   
-    terrain.height_field_raw[center_x-x2 : center_x + x2, center_y-y2 : center_y + y2] = -1000
-    terrain.height_field_raw[center_x-x1 : center_x + x1, center_y-y1 : center_y + y1] = 0
+def rasterize_ladder_bars(horizontal_scale,
+                          vertical_scale,
+                          num_rows,
+                          num_cols,
+                          bar_centers,
+                          bar_vertices,
+                          platform_length=1.0,
+                          platform_width=1.2,
+                          platform_gap=0.1,
+                          base_height=0.0):
+    # Coarse scan map: use the imported bar's XY bounds and return each bar's
+    # center height instead of tracing the exact round STL surface.
+    height_field = np.full((num_rows, num_cols), int(np.round(base_height / vertical_scale)), dtype=np.int16)
+    bar_mins = bar_vertices.min(axis=0)
+    bar_maxs = bar_vertices.max(axis=0)
+    for center in bar_centers:
+        mins = bar_mins + center
+        maxs = bar_maxs + center
+        min_x = max(0, int(np.floor(mins[0] / horizontal_scale)))
+        max_x = min(num_rows - 1, int(np.floor(maxs[0] / horizontal_scale)))
+        min_y = max(0, int(np.floor(mins[1] / horizontal_scale)))
+        max_y = min(num_cols - 1, int(np.floor(maxs[1] / horizontal_scale)))
+        if min_x > max_x or min_y > max_y:
+            continue
 
-def pit_terrain(terrain, depth, platform_size=1.):
-    depth = int(depth / terrain.vertical_scale)
-    platform_size = int(platform_size / terrain.horizontal_scale / 2)
-    x1 = terrain.length // 2 - platform_size
-    x2 = terrain.length // 2 + platform_size
-    y1 = terrain.width // 2 - platform_size
-    y2 = terrain.width // 2 + platform_size
-    terrain.height_field_raw[x1:x2, y1:y2] = -depth
+        height_value = int(np.round(center[2] / vertical_scale))
+        height_field[min_x:max_x + 1, min_y:max_y + 1] = height_value
+
+    _fill_platform_height(
+        height_field,
+        horizontal_scale=horizontal_scale,
+        vertical_scale=vertical_scale,
+        bar_centers=bar_centers,
+        platform_length=platform_length,
+        platform_width=platform_width,
+        platform_gap=platform_gap)
+    return height_field
+
+
+def generate_ladder_bar_mesh(env_length,
+                             env_width,
+                             difficulty,
+                             bar_spacing=0.3,
+                             bar_count=10,
+                             ladder_angle=0.0,
+                             platform_length=1.0,
+                             platform_width=1.2,
+                             platform_gap=0.1,
+                             bar_vertices=None,
+                             bar_triangles=None
+                             ):
+
+    center_x = env_length * 0.5
+    center_y = env_width * 0.5
+
+    bar_spacing = _lerp_range(bar_spacing, difficulty)
+    bar_count = int(round(_lerp_range(bar_count, difficulty)))
+    ladder_angle = _lerp_range(ladder_angle, difficulty)
+
+    vertices = []
+    triangles = []
+
+    # Center the imported STL once. Every rung is just this mesh translated.
+    prepared_bar_vertices = _prepare_bar_mesh(bar_vertices)
+    bar_centers = _compute_bar_centers(
+        center_x=center_x,
+        center_y=center_y,
+        bar_spacing=bar_spacing,
+        bar_count=bar_count,
+        ladder_angle=ladder_angle)
+    for center in bar_centers:
+        _append_prepared_bar_mesh(
+            vertices,
+            triangles,
+            bar_vertices=prepared_bar_vertices,
+            bar_triangles=bar_triangles,
+            center=center)
+    _append_platform_mesh(
+        vertices,
+        triangles,
+        bar_centers=bar_centers,
+        platform_length=platform_length,
+        platform_width=platform_width,
+        platform_gap=platform_gap)
+
+    return bar_centers, prepared_bar_vertices, np.asarray(vertices, dtype=np.float32), np.asarray(triangles, dtype=np.uint32)
+
+
+def _compute_bar_centers(center_x, center_y, bar_spacing, bar_count, ladder_angle):
+    angle_rad = np.deg2rad(ladder_angle)
+    ground_spacing = bar_spacing * np.cos(angle_rad)
+    height_spacing = bar_spacing * np.sin(angle_rad)
+
+    centers = []
+    for bar_idx in range(bar_count):
+        # Extending the ladder line backward intersects the ground at center_x.
+        step = bar_idx + 1
+        centers.append([center_x + step * ground_spacing, center_y, step * height_spacing])
+    return np.asarray(centers, dtype=np.float32)
+
+
+def _append_ground_mesh(vertices, triangles, env_length, env_width, z=0.0):
+    base_idx = len(vertices)
+    vertices.extend([
+        [0.0, 0.0, z],
+        [env_length, 0.0, z],
+        [env_length, env_width, z],
+        [0.0, env_width, z],
+    ])
+    triangles.extend([
+        [base_idx + 0, base_idx + 1, base_idx + 2],
+        [base_idx + 0, base_idx + 2, base_idx + 3],
+    ])
+
+
+def _append_platform_mesh(vertices, triangles, bar_centers, platform_length, platform_width, platform_gap):
+    if platform_length <= 0.0 or platform_width <= 0.0:
+        return
+
+    corners_xy, top_z = _platform_corners(bar_centers, platform_length, platform_width, platform_gap)
+    base_idx = len(vertices)
+    vertices.extend([[xy[0], xy[1], 0.0] for xy in corners_xy])
+    vertices.extend([[xy[0], xy[1], top_z] for xy in corners_xy])
+
+    # Top face plus four side faces. No bottom face because it sits on ground.
+    triangles.extend([
+        [base_idx + 4, base_idx + 5, base_idx + 6],
+        [base_idx + 4, base_idx + 6, base_idx + 7],
+        [base_idx + 0, base_idx + 1, base_idx + 5],
+        [base_idx + 0, base_idx + 5, base_idx + 4],
+        [base_idx + 1, base_idx + 2, base_idx + 6],
+        [base_idx + 1, base_idx + 6, base_idx + 5],
+        [base_idx + 2, base_idx + 3, base_idx + 7],
+        [base_idx + 2, base_idx + 7, base_idx + 6],
+        [base_idx + 3, base_idx + 0, base_idx + 4],
+        [base_idx + 3, base_idx + 4, base_idx + 7],
+    ])
+
+
+def _fill_platform_height(height_field,
+                          horizontal_scale,
+                          vertical_scale,
+                          bar_centers,
+                          platform_length,
+                          platform_width,
+                          platform_gap):
+    if platform_length <= 0.0 or platform_width <= 0.0:
+        return
+
+    corners_xy, top_z = _platform_corners(bar_centers, platform_length, platform_width, platform_gap)
+
+    min_x = max(0, int(np.floor(np.min(corners_xy[:, 0]) / horizontal_scale)))
+    max_x = min(height_field.shape[0] - 1, int(np.floor(np.max(corners_xy[:, 0]) / horizontal_scale)))
+    min_y = max(0, int(np.floor(np.min(corners_xy[:, 1]) / horizontal_scale)))
+    max_y = min(height_field.shape[1] - 1, int(np.floor(np.max(corners_xy[:, 1]) / horizontal_scale)))
+    if min_x <= max_x and min_y <= max_y:
+        height_field[min_x:max_x + 1, min_y:max_y + 1] = int(np.round(top_z / vertical_scale))
+
+
+def _platform_corners(bar_centers, platform_length, platform_width, platform_gap):
+    last_bar = bar_centers[-1]
+    previous_bar = bar_centers[-2] if len(bar_centers) > 1 else last_bar - np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    direction = last_bar[:2] - previous_bar[:2]
+    direction_norm = np.linalg.norm(direction)
+    direction = np.array([1.0, 0.0], dtype=np.float32) if direction_norm <= 1e-6 else direction / direction_norm
+
+    side = np.array([-direction[1], direction[0]], dtype=np.float32)
+    center_xy = last_bar[:2] + direction * (platform_gap + platform_length * 0.5)
+    half_length = platform_length * 0.5
+    half_width = platform_width * 0.5
+    corners_xy = np.asarray([
+        center_xy - direction * half_length - side * half_width,
+        center_xy + direction * half_length - side * half_width,
+        center_xy + direction * half_length + side * half_width,
+        center_xy - direction * half_length + side * half_width,
+    ], dtype=np.float32)
+    return corners_xy, last_bar[2]
+
+
+def _append_prepared_bar_mesh(vertices,
+                              triangles,
+                              bar_vertices,
+                              bar_triangles,
+                              center):
+    transformed = np.copy(bar_vertices)
+    transformed += np.asarray(center, dtype=np.float32).reshape(1, 3)
+
+    base_idx = len(vertices)
+    vertices.extend(transformed.tolist())
+    triangles.extend((bar_triangles + base_idx).tolist())
+
+
+def _prepare_bar_mesh(vertices):
+    prepared = np.copy(vertices).astype(np.float32)
+    mins = prepared.min(axis=0)
+    maxs = prepared.max(axis=0)
+    prepared[:, 0] -= (mins[0] + maxs[0]) * 0.5
+    prepared[:, 1] -= (mins[1] + maxs[1]) * 0.5
+    prepared[:, 2] -= (mins[2] + maxs[2]) * 0.5
+    return prepared
+
+
+def _lerp_range(value_range, difficulty):
+    if np.isscalar(value_range):
+        return float(value_range)
+    if len(value_range) != 2:
+        raise ValueError("range values must be scalars or two-element sequences")
+    return float(value_range[0] + (value_range[1] - value_range[0]) * difficulty)
+
+
+def load_stl_mesh(mesh_file):
+    # Binary STL loader. It keeps the STL units as-is, so the file should
+    # already be exported in meters for Isaac Gym.
+    mesh_file = mesh_file.format(LEGGED_GYM_ROOT_DIR=LEGGED_GYM_ROOT_DIR)
+    vertices = []
+    triangles = []
+    vertex_map = {}
+
+    with open(mesh_file, "rb") as f:
+        f.seek(80)
+        tri_count = int(np.frombuffer(f.read(4), dtype=np.uint32)[0])
+        for _ in range(tri_count):
+            data = f.read(50)
+            coords = np.frombuffer(data[12:48], dtype=np.float32).reshape(3, 3)
+            tri = []
+            for vertex in coords:
+                key = tuple(np.round(vertex, 9))
+                if key not in vertex_map:
+                    vertex_map[key] = len(vertices)
+                    vertices.append(vertex.tolist())
+                tri.append(vertex_map[key])
+            triangles.append(tri)
+
+    vertices = np.asarray(vertices, dtype=np.float32)
+    triangles = np.asarray(triangles, dtype=np.uint32)
+    return vertices, triangles

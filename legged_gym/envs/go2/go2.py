@@ -41,10 +41,10 @@ from typing import Tuple, Dict
 
 from legged_gym.envs import LeggedRobot
 from legged_gym import LEGGED_GYM_ROOT_DIR
-from .mixed_terrains.go2_rough_config import GO2RoughCfg
+from .go2_ladder_config import GO2LadderCfg
 
 class GO2(LeggedRobot):
-    cfg : GO2RoughCfg
+    cfg : GO2LadderCfg
     def __init__(self, cfg, sim_params, physics_engine, sim_device, headless):
         super().__init__(cfg, sim_params, physics_engine, sim_device, headless)
 

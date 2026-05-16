@@ -30,13 +30,30 @@
 
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-class GO2RoughCfg( LeggedRobotCfg ):
+class GO2LadderCfg( LeggedRobotCfg ):
     class env( LeggedRobotCfg.env ):
-        num_envs = 4096
+        num_envs = 16
         num_actions = 12
 
     class terrain( LeggedRobotCfg.terrain ):
         mesh_type = 'trimesh'
+        horizontal_scale = 0.1
+        vertical_scale = 0.005
+        curriculum = False
+        measure_heights = True
+        terrain_length = 8.
+        terrain_width = 8.
+        num_rows = 10
+        num_cols = 20
+        terrain_kwargs = {
+            "bar_mesh_file": "{LEGGED_GYM_ROOT_DIR}/resources/terrains/round_bar.STL",
+            "bar_spacing": (0.45, 0.25),
+            "bar_count": (8, 14),
+            "ladder_angle": (0.0, 25.0),
+            "platform_length": 1.0,
+            "platform_width": 1.2,
+            "platform_gap": 0.1,
+        }
 
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.3] # x,y,z [m]
@@ -77,8 +94,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
         class scales( LeggedRobotCfg.rewards.scales ):
             pass
 
-class GO2RoughCfgPPO( LeggedRobotCfgPPO ):
+class GO2LadderCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        experiment_name = 'go2_rough'
+        experiment_name = 'go2_ladder'
         load_run = -1

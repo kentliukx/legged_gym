@@ -31,8 +31,30 @@
 import torch
 from torch import Tensor
 import numpy as np
-from isaacgym.torch_utils import quat_apply, normalize
 from typing import Tuple
+
+def normalize(x, eps=1e-9):
+    return x / x.norm(p=2, dim=-1, keepdim=True).clamp(min=eps)
+
+def quat_apply(quat, vec):
+    vec_shape = vec.shape
+    vec = vec.reshape(-1, 3)
+    quat = quat.reshape(-1, 4)
+
+    if quat.shape[0] == 1 and vec.shape[0] != 1:
+        quat = quat.expand(vec.shape[0], -1)
+    elif quat.shape[0] != vec.shape[0]:
+        raise RuntimeError(f"quat and vec batch sizes do not match: {quat.shape[0]} vs {vec.shape[0]}")
+
+    quat_xyz = quat[:, :3]
+    quat_w = quat[:, 3].unsqueeze(-1)
+    t = 2.0 * torch.cross(quat_xyz, vec, dim=-1)
+    return (vec + quat_w * t + torch.cross(quat_xyz, t, dim=-1)).view(vec_shape)
+
+def quat_rotate_inverse(quat, vec):
+    quat_inv = quat.clone()
+    quat_inv[:, :3] *= -1
+    return quat_apply(quat_inv, vec)
 
 # @ torch.jit.script
 def quat_apply_yaw(quat, vec):
@@ -46,6 +68,9 @@ def wrap_to_pi(angles):
     angles %= 2*np.pi
     angles -= 2*np.pi * (angles > np.pi)
     return angles
+
+def torch_rand_float(lower, upper, shape, device):
+    return (upper - lower) * torch.rand(*shape, device=device) + lower
 
 # @ torch.jit.script
 def torch_rand_sqrt_float(lower, upper, shape, device):
