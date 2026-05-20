@@ -32,12 +32,12 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class GO2LadderCfg( LeggedRobotCfg ):
     class env( LeggedRobotCfg.env ):
-        num_envs = 2048
+        num_envs = 4096
         num_actions = 12
 
     class terrain( LeggedRobotCfg.terrain ):
         mesh_type = 'trimesh'
-        horizontal_scale = 0.04
+        horizontal_scale = 0.01
         vertical_scale = 0.005
         curriculum = True
         measure_heights = True
@@ -110,10 +110,10 @@ class GO2LadderCfg( LeggedRobotCfg ):
             action_rate = -0.01
             stand_still = -0.5
 
-            position_tracking = 3.0
-            heading_tracking = 0.5
-            base_motion = 0.2
-            joints = -0.001
+            position_tracking = 10.0
+            heading_tracking = 5
+            base_motion = 2
+            joints = -1e-4
             action_smoothness = -0.01
             foot_slippage = -0.25
             flat_orientation = -1.0

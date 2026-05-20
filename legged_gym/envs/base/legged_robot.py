@@ -987,7 +987,7 @@ class LeggedRobot(BaseTask):
     def _reward_joints(self):
         dof_acc = (self.dof_vel - self.last_dof_vel) / self.dt
         # dof acc is excessively large so we don't consider it
-        return torch.sum(0.01 * torch.square(self.torques) + torch.square(self.dof_vel) + 0 * torch.square(dof_acc), dim=1)
+        return torch.sum(torch.square(self.torques) + torch.square(self.dof_vel) + 0 * torch.square(dof_acc), dim=1)
 
     def _reward_foot_slip(self):
         # Penalize foot slip by looking at the horizontal contact forces of the feet
