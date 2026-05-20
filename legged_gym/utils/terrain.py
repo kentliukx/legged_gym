@@ -157,11 +157,7 @@ class Terrain:
 
             env_origin_x = (i + 0.5) * self.env_length
             env_origin_y = (j + 0.5) * self.env_width
-            x1 = int((self.env_length / 2. - 1) / self.cfg.horizontal_scale)
-            x2 = int((self.env_length / 2. + 1) / self.cfg.horizontal_scale)
-            y1 = int((self.env_width / 2. - 1) / self.cfg.horizontal_scale)
-            y2 = int((self.env_width / 2. + 1) / self.cfg.horizontal_scale)
-            env_origin_z = np.max(local_height_field[x1:x2, y1:y2]) * self.cfg.vertical_scale
+            env_origin_z = 0.0
             self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
             self.platform_centers[i, j] = [
                 platform_center[0] + start_x * self.cfg.horizontal_scale - self.cfg.border_size,
