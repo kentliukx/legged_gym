@@ -32,14 +32,14 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class GO2LadderCfg( LeggedRobotCfg ):
     class env( LeggedRobotCfg.env ):
-        num_envs = 16
+        num_envs = 2048
         num_actions = 12
 
     class terrain( LeggedRobotCfg.terrain ):
         mesh_type = 'trimesh'
-        horizontal_scale = 0.1
+        horizontal_scale = 0.04
         vertical_scale = 0.005
-        curriculum = False
+        curriculum = True
         measure_heights = True
         terrain_length = 8.
         terrain_width = 8.
@@ -47,16 +47,17 @@ class GO2LadderCfg( LeggedRobotCfg ):
         num_cols = 20
         terrain_kwargs = {
             "bar_mesh_file": "{LEGGED_GYM_ROOT_DIR}/resources/terrains/round_bar.STL",
-            "bar_spacing": (0.45, 0.25),
-            "bar_count": (8, 14),
-            "ladder_angle": (0.0, 25.0),
-            "platform_length": 1.0,
-            "platform_width": 1.2,
+            "bar_spacing": (0.15, 0.25),
+            "bar_count": (10, 14),
+            "ladder_angle": (0, 90),
+            "bar_x_scale": (3.0, 1.0),
+            "platform_length": 2,
+            "platform_width": 2,
             "platform_gap": 0.1,
         }
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.3] # x,y,z [m]
+        pos = [-1.0, 0.0, 0.3] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
             "FL_thigh_joint": 0.8, "FL_hip_joint": 0.3, "FL_calf_joint": -1.6,
             "FR_thigh_joint": 0.8, "FR_hip_joint": -0.3, "FR_calf_joint": -1.6,
@@ -78,8 +79,8 @@ class GO2LadderCfg( LeggedRobotCfg ):
         file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf"
         name = "go2"
         foot_name = "calf"
-        penalize_contacts_on = ["thigh", "hip"]
-        terminate_after_contacts_on = ["base", "Head_upper", "Head_lower"]
+        penalize_contacts_on = ["thigh", "hip", "Head_upper", "Head_lower"]
+        terminate_after_contacts_on = []
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
 
     class domain_rand( LeggedRobotCfg.domain_rand):
@@ -90,9 +91,35 @@ class GO2LadderCfg( LeggedRobotCfg ):
     class rewards( LeggedRobotCfg.rewards ):
         base_height_target = 0.3
         max_contact_force = 500.
-        only_positive_rewards = True
+        only_positive_rewards = False
+        goal_radius = 0.15
+        goal_speed_limit = 0.7
+        contact_force_threshold = 1.0
+        flat_height_threshold = 0.03
         class scales( LeggedRobotCfg.rewards.scales ):
-            pass
+            tracking_lin_vel = 0.0
+            tracking_ang_vel = 0.0
+            lin_vel_z = 0.0
+            ang_vel_xy = 0.0
+            orientation = 0.0
+            torques = 0.0
+            dof_vel = 0.0
+            dof_acc = 0.0
+            feet_air_time = 0.0
+            feet_stumble = 0.0
+            action_rate = -0.01
+            stand_still = -0.5
+
+            position_tracking = 3.0
+            heading_tracking = 0.5
+            base_motion = 0.2
+            joints = -0.001
+            action_smoothness = -0.01
+            foot_slippage = -0.25
+            flat_orientation = -1.0
+            stand_still_contact = -0.5
+            collision = -0.1
+            base_collision = -1.0
 
 class GO2LadderCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):

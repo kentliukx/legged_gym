@@ -33,12 +33,12 @@ from .base_config import BaseConfig
 class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 4096
-        num_observations = 235
+        num_observations = 283
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
         env_spacing = 3.  # not used with heightfields/trimeshes 
         send_timeouts = True # send time out information to the algorithm
-        episode_length_s = 20 # episode length in seconds
+        episode_length_s = 10 # episode length in seconds
 
     class terrain:
         mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
@@ -51,15 +51,20 @@ class LeggedRobotCfg(BaseConfig):
         restitution = 0.
         # ladder terrain only:
         measure_heights = True
-        measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] # 1mx1.6m rectangle (without center line)
-        measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
+        # 21 x 11 = 231 height points over a 1.6m x 0.8m rectangle.
+        measured_points_x = [-0.8, -0.72, -0.64, -0.56, -0.48, -0.4, -0.32,
+                             -0.24, -0.16, -0.08, 0., 0.08, 0.16, 0.24,
+                             0.32, 0.4, 0.48, 0.56, 0.64, 0.72, 0.8]
+        measured_points_y = [-0.4, -0.32, -0.24, -0.16, -0.08, 0.,
+                             0.08, 0.16, 0.24, 0.32, 0.4]
         terrain_kwargs = {
             "bar_mesh_file": "{LEGGED_GYM_ROOT_DIR}/resources/terrains/round_bar.STL",
-            "bar_spacing": (0.45, 0.25),
+            "bar_spacing": (0.15, 0.25),
             "bar_count": (8, 14),
-            "ladder_angle": (0.0, 25.0),
-            "platform_length": 1.0,
-            "platform_width": 1.2,
+            "ladder_angle": (10, 90),
+            "bar_x_scale": (3.0, 1.0),
+            "platform_length": 2,
+            "platform_width": 2,
             "platform_gap": 0.1,
         }
         max_init_terrain_level = 5 # starting curriculum state
@@ -73,13 +78,13 @@ class LeggedRobotCfg(BaseConfig):
     class commands:
         curriculum = False
         max_curriculum = 1.
-        num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
+        num_commands = 2
         resampling_time = 10. # time before command are changed[s]
-        heading_command = True # if true: compute ang vel command from heading error
+        heading_command = True
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
-            lin_vel_y = [-1.0, 1.0]   # min max [m/s]
-            ang_vel_yaw = [-1, 1]    # min max [rad/s]
+            lin_vel_y = [-1.0, 1.0] # min max [m/s]
+            ang_vel_yaw = [-1.0, 1.0] # min max [rad/s]
             heading = [-3.14, 3.14]
 
     class init_state:
@@ -137,18 +142,27 @@ class LeggedRobotCfg(BaseConfig):
             termination = -0.0
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
+            position_tracking = 0.0
+            heading_tracking = 0.0
+            base_motion = 0.0
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
             orientation = -0.
+            flat_orientation = 0.0
             torques = -0.00001
+            joints = 0.0
             dof_vel = -0.
             dof_acc = -2.5e-7
             base_height = -0. 
             feet_air_time =  1.0
             collision = -1.
+            base_collision = 0.0
             feet_stumble = -0.0 
             action_rate = -0.01
+            action_smoothness = 0.0
+            foot_slippage = 0.0
             stand_still = -0.
+            stand_still_contact = 0.0
 
         only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
@@ -157,6 +171,11 @@ class LeggedRobotCfg(BaseConfig):
         soft_torque_limit = 1.
         base_height_target = 1.
         max_contact_force = 100. # forces above this value are penalized
+        foot_slip_threshold = 1.0
+        goal_radius = 0.15
+        goal_speed_limit = 0.7
+        contact_force_threshold = 1.0
+        flat_height_threshold = 0.02
 
     class normalization:
         class obs_scales:
@@ -209,8 +228,8 @@ class LeggedRobotCfgPPO(BaseConfig):
     runner_class_name = 'OnPolicyRunner'
     class policy:
         init_noise_std = 1.0
-        actor_hidden_dims = [512, 256, 128]
-        critic_hidden_dims = [512, 256, 128]
+        actor_hidden_dims = [256, 128, 64]
+        critic_hidden_dims = [256, 128, 64]
         activation = 'elu' # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
         # only for 'ActorCriticRecurrent':
         # rnn_type = 'lstm'
@@ -235,7 +254,7 @@ class LeggedRobotCfgPPO(BaseConfig):
     class runner:
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
-        num_steps_per_env = 24 # per iteration
+        num_steps_per_env = 48 # per iteration
         max_iterations = 1500 # number of policy updates
 
         # logging

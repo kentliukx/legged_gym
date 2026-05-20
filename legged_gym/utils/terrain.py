@@ -64,6 +64,7 @@ class Terrain:
 
         self.cfg.num_sub_terrains = cfg.num_rows * cfg.num_cols
         self.env_origins = np.zeros((cfg.num_rows, cfg.num_cols, 3))
+        self.platform_centers = np.zeros((cfg.num_rows, cfg.num_cols, 3), dtype=np.float32)
 
         self.width_per_env_pixels = int(self.env_width / cfg.horizontal_scale)
         self.length_per_env_pixels = int(self.env_length / cfg.horizontal_scale)
@@ -86,6 +87,7 @@ class Terrain:
                                       bar_spacing=0.3,
                                       bar_count=10,
                                       ladder_angle=0.0,
+                                      bar_x_scale=(3.0, 1.0),
                                       platform_length=1.0,
                                       platform_width=1.2,
                                       platform_gap=0.1,
@@ -117,13 +119,14 @@ class Terrain:
             # reuse one generated ladder and one height field.
             if i not in row_cache:
                 row_difficulty = i / (self.cfg.num_rows - 1) if self.cfg.curriculum and self.cfg.num_rows > 1 else difficulty
-                bar_centers, prepared_bar_vertices, local_vertices, local_triangles = generate_ladder_bar_mesh(
+                bar_centers, prepared_bar_vertices, local_vertices, local_triangles, platform_center = generate_ladder_bar_mesh(
                     env_length=self.env_length,
                     env_width=self.env_width,
                     difficulty=row_difficulty,
                     bar_spacing=bar_spacing,
                     bar_count=bar_count,
                     ladder_angle=ladder_angle,
+                    bar_x_scale=bar_x_scale,
                     platform_length=platform_length,
                     platform_width=platform_width,
                     platform_gap=platform_gap,
@@ -142,9 +145,9 @@ class Terrain:
                     platform_length=platform_length,
                     platform_width=platform_width,
                     platform_gap=platform_gap)
-                row_cache[i] = (local_vertices, local_triangles, local_height_field)
+                row_cache[i] = (local_vertices, local_triangles, local_height_field, platform_center)
 
-            local_vertices, local_triangles, local_height_field = row_cache[i]
+            local_vertices, local_triangles, local_height_field, platform_center = row_cache[i]
 
             start_x = self.border + i * self.length_per_env_pixels
             start_y = self.border + j * self.width_per_env_pixels
@@ -160,6 +163,11 @@ class Terrain:
             y2 = int((self.env_width / 2. + 1) / self.cfg.horizontal_scale)
             env_origin_z = np.max(local_height_field[x1:x2, y1:y2]) * self.cfg.vertical_scale
             self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
+            self.platform_centers[i, j] = [
+                platform_center[0] + start_x * self.cfg.horizontal_scale - self.cfg.border_size,
+                platform_center[1] + start_y * self.cfg.horizontal_scale - self.cfg.border_size,
+                platform_center[2],
+            ]
 
             # Move the local ladder tile into its global terrain-grid position.
             world_vertices = np.copy(local_vertices)
@@ -218,6 +226,7 @@ def generate_ladder_bar_mesh(env_length,
                              bar_spacing=0.3,
                              bar_count=10,
                              ladder_angle=0.0,
+                             bar_x_scale=(3.0, 1.0),
                              platform_length=1.0,
                              platform_width=1.2,
                              platform_gap=0.1,
@@ -231,12 +240,14 @@ def generate_ladder_bar_mesh(env_length,
     bar_spacing = _lerp_range(bar_spacing, difficulty)
     bar_count = int(round(_lerp_range(bar_count, difficulty)))
     ladder_angle = _lerp_range(ladder_angle, difficulty)
+    bar_x_scale = _lerp_range(bar_x_scale, difficulty)
 
     vertices = []
     triangles = []
 
     # Center the imported STL once. Every rung is just this mesh translated.
     prepared_bar_vertices = _prepare_bar_mesh(bar_vertices)
+    prepared_bar_vertices[:, 0] *= bar_x_scale
     bar_centers = _compute_bar_centers(
         center_x=center_x,
         center_y=center_y,
@@ -258,7 +269,14 @@ def generate_ladder_bar_mesh(env_length,
         platform_width=platform_width,
         platform_gap=platform_gap)
 
-    return bar_centers, prepared_bar_vertices, np.asarray(vertices, dtype=np.float32), np.asarray(triangles, dtype=np.uint32)
+    platform_corners_xy, platform_top_z = _platform_corners(bar_centers, platform_length, platform_width, platform_gap)
+    platform_center = np.asarray([
+        np.mean(platform_corners_xy[:, 0]),
+        np.mean(platform_corners_xy[:, 1]),
+        platform_top_z,
+    ], dtype=np.float32)
+
+    return bar_centers, prepared_bar_vertices, np.asarray(vertices, dtype=np.float32), np.asarray(triangles, dtype=np.uint32), platform_center
 
 
 def _compute_bar_centers(center_x, center_y, bar_spacing, bar_count, ladder_angle):
