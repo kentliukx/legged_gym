@@ -62,15 +62,20 @@ class Terrain:
         self.env_length = cfg.terrain_length
         self.env_width = cfg.terrain_width
 
-        self.cfg.num_sub_terrains = cfg.num_rows * cfg.num_cols
-        self.env_origins = np.zeros((cfg.num_rows, cfg.num_cols, 3))
-        self.platform_centers = np.zeros((cfg.num_rows, cfg.num_cols, 3), dtype=np.float32)
+        if cfg.num_rows < 2:
+            raise ValueError("cfg.terrain.num_rows must be at least 2: one rough row plus at least one ladder row")
+        self.num_ladder_rows = cfg.num_rows - 1
+        self.num_cols = cfg.num_cols
+        self.cfg.num_sub_terrains = cfg.num_rows * self.num_cols
+        self.env_origins = np.zeros((cfg.num_rows, self.num_cols, 3))
+        self.platform_centers = np.zeros((cfg.num_rows, self.num_cols, 3), dtype=np.float32)
+        self.ladder_mask = np.ones((cfg.num_rows, self.num_cols), dtype=np.bool_)
 
         self.width_per_env_pixels = int(self.env_width / cfg.horizontal_scale)
         self.length_per_env_pixels = int(self.env_length / cfg.horizontal_scale)
 
         self.border = int(cfg.border_size/self.cfg.horizontal_scale)
-        self.tot_cols = int(cfg.num_cols * self.width_per_env_pixels) + 2 * self.border
+        self.tot_cols = int(self.num_cols * self.width_per_env_pixels) + 2 * self.border
         self.tot_rows = int(cfg.num_rows * self.length_per_env_pixels) + 2 * self.border
 
         self.height_field_raw = np.zeros((self.tot_rows, self.tot_cols), dtype=np.int16)
@@ -91,6 +96,10 @@ class Terrain:
                                       platform_length=1.0,
                                       platform_width=1.2,
                                       platform_gap=0.1,
+                                      ladder_x_offset=0.0,
+                                      rough_probability=0.0,
+                                      rough_height_range=(0.02, 0.08),
+                                      rough_grid_size=0.1,
                                       difficulty=1.0,
                                       ):
         bar_vertices, bar_triangles = load_stl_mesh(bar_mesh_file)
@@ -98,6 +107,7 @@ class Terrain:
         all_triangles = []
         row_cache = {}
         vertex_offset = 0
+        self.rough_probability = float(np.clip(rough_probability, 0.0, 1.0))
 
         # Add one ground mesh for the full terrain grid. The ladder mesh is
         # tiled per environment, but the flat floor does not need duplicates.
@@ -113,41 +123,55 @@ class Terrain:
         vertex_offset += 4
 
         for k in range(self.cfg.num_sub_terrains):
-            (i, j) = np.unravel_index(k, (self.cfg.num_rows, self.cfg.num_cols))
+            (i, j) = np.unravel_index(k, (self.cfg.num_rows, self.num_cols))
 
-            # Curriculum only changes by row, so all columns in the same row
-            # reuse one generated ladder and one height field.
-            if i not in row_cache:
-                row_difficulty = i / (self.cfg.num_rows - 1) if self.cfg.curriculum and self.cfg.num_rows > 1 else difficulty
-                bar_centers, prepared_bar_vertices, local_vertices, local_triangles, platform_center = generate_ladder_bar_mesh(
+            is_rough = i == 0
+            self.ladder_mask[i, j] = not is_rough
+
+            if is_rough:
+                local_vertices, local_triangles, local_height_field, platform_center = generate_random_rough_mesh(
                     env_length=self.env_length,
                     env_width=self.env_width,
-                    difficulty=row_difficulty,
-                    bar_spacing=bar_spacing,
-                    bar_count=bar_count,
-                    ladder_angle=ladder_angle,
-                    bar_x_scale=bar_x_scale,
-                    platform_length=platform_length,
-                    platform_width=platform_width,
-                    platform_gap=platform_gap,
-                    bar_vertices=bar_vertices,
-                    bar_triangles=bar_triangles)
-
-                # Height scan is intentionally simple: inside a bar/platform XY
-                # range means returning the bar center/platform top height.
-                local_height_field = rasterize_ladder_bars(
                     horizontal_scale=self.cfg.horizontal_scale,
                     vertical_scale=self.cfg.vertical_scale,
-                    num_rows=self.length_per_env_pixels,
-                    num_cols=self.width_per_env_pixels,
-                    bar_centers=bar_centers,
-                    bar_vertices=prepared_bar_vertices,
-                    platform_length=platform_length,
-                    platform_width=platform_width,
-                    platform_gap=platform_gap)
-                row_cache[i] = (local_vertices, local_triangles, local_height_field, platform_center)
+                    difficulty=difficulty,
+                    rough_height_range=rough_height_range,
+                    rough_grid_size=rough_grid_size)
+            else:
+                if i not in row_cache:
+                    row_difficulty = ((i - 1) / (self.cfg.num_rows - 2)
+                                      if self.cfg.curriculum and self.cfg.num_rows > 2
+                                      else difficulty)
+                    bar_centers, prepared_bar_vertices, local_vertices, local_triangles, platform_center = generate_ladder_bar_mesh(
+                        env_length=self.env_length,
+                        env_width=self.env_width,
+                        difficulty=row_difficulty,
+                        bar_spacing=bar_spacing,
+                        bar_count=bar_count,
+                        ladder_angle=ladder_angle,
+                        bar_x_scale=bar_x_scale,
+                        platform_length=platform_length,
+                        platform_width=platform_width,
+                        platform_gap=platform_gap,
+                        x_offset=ladder_x_offset,
+                        bar_vertices=bar_vertices,
+                        bar_triangles=bar_triangles)
 
-            local_vertices, local_triangles, local_height_field, platform_center = row_cache[i]
+                    # Height scan is intentionally simple: inside a bar/platform XY
+                    # range means returning the bar center/platform top height.
+                    local_height_field = rasterize_ladder_bars(
+                        horizontal_scale=self.cfg.horizontal_scale,
+                        vertical_scale=self.cfg.vertical_scale,
+                        num_rows=self.length_per_env_pixels,
+                        num_cols=self.width_per_env_pixels,
+                        bar_centers=bar_centers,
+                        bar_vertices=prepared_bar_vertices,
+                        platform_length=platform_length,
+                        platform_width=platform_width,
+                        platform_gap=platform_gap)
+                    row_cache[i] = (local_vertices, local_triangles, local_height_field, platform_center)
+
+                local_vertices, local_triangles, local_height_field, platform_center = row_cache[i]
 
             start_x = self.border + i * self.length_per_env_pixels
             start_y = self.border + j * self.width_per_env_pixels
@@ -226,11 +250,12 @@ def generate_ladder_bar_mesh(env_length,
                              platform_length=1.0,
                              platform_width=1.2,
                              platform_gap=0.1,
+                             x_offset=0.0,
                              bar_vertices=None,
                              bar_triangles=None
                              ):
 
-    center_x = env_length * 0.5
+    center_x = env_length * 0.5 + x_offset
     center_y = env_width * 0.5
 
     bar_spacing = _lerp_range(bar_spacing, difficulty)
@@ -273,6 +298,82 @@ def generate_ladder_bar_mesh(env_length,
     ], dtype=np.float32)
 
     return bar_centers, prepared_bar_vertices, np.asarray(vertices, dtype=np.float32), np.asarray(triangles, dtype=np.uint32), platform_center
+
+
+def generate_random_rough_mesh(env_length,
+                               env_width,
+                               horizontal_scale,
+                               vertical_scale,
+                               difficulty,
+                               rough_height_range=(0.02, 0.08),
+                               rough_grid_size=0.1):
+    rough_height = _lerp_range(rough_height_range, difficulty)
+    rough_grid_size = max(float(rough_grid_size), horizontal_scale)
+    grid_rows = max(2, int(np.ceil(env_length / rough_grid_size)) + 1)
+    grid_cols = max(2, int(np.ceil(env_width / rough_grid_size)) + 1)
+
+    height_grid = np.random.uniform(0.0, rough_height, size=(grid_rows, grid_cols))
+    height_grid = np.round(height_grid / vertical_scale).astype(np.int16)
+
+    center_col = grid_cols // 2
+    spawn_rows = max(1, int(np.ceil(1.0 / rough_grid_size)))
+    target_row = min(grid_rows - 1, int(round(0.85 * (grid_rows - 1))))
+    target_radius = max(1, int(np.ceil(0.5 / rough_grid_size)))
+    target_col_min = max(0, center_col - target_radius)
+    target_col_max = min(grid_cols, center_col + target_radius + 1)
+    height_grid[:spawn_rows, :] = 0
+    height_grid[max(0, target_row - target_radius):min(grid_rows, target_row + target_radius + 1),
+                target_col_min:target_col_max] = 0
+
+    height_field = _rasterize_rough_height_grid(
+        height_grid=height_grid,
+        num_rows=int(env_length / horizontal_scale),
+        num_cols=int(env_width / horizontal_scale),
+        env_length=env_length,
+        env_width=env_width,
+        horizontal_scale=horizontal_scale)
+    vertices, triangles = _height_grid_to_mesh(
+        height_grid=height_grid,
+        env_length=env_length,
+        env_width=env_width,
+        vertical_scale=vertical_scale)
+    platform_center = np.asarray([env_length * 0.85, env_width * 0.5, 0.0], dtype=np.float32)
+    return vertices, triangles, height_field, platform_center
+
+
+def _rasterize_rough_height_grid(height_grid,
+                                 num_rows,
+                                 num_cols,
+                                 env_length,
+                                 env_width,
+                                 horizontal_scale):
+    sample_x = np.clip(
+        np.floor(np.arange(num_rows) * horizontal_scale / env_length * (height_grid.shape[0] - 1)).astype(np.int64),
+        0,
+        height_grid.shape[0] - 1)
+    sample_y = np.clip(
+        np.floor(np.arange(num_cols) * horizontal_scale / env_width * (height_grid.shape[1] - 1)).astype(np.int64),
+        0,
+        height_grid.shape[1] - 1)
+    return height_grid[np.ix_(sample_x, sample_y)].astype(np.int16)
+
+
+def _height_grid_to_mesh(height_grid, env_length, env_width, vertical_scale):
+    x = np.linspace(0.0, env_length, height_grid.shape[0], dtype=np.float32)
+    y = np.linspace(0.0, env_width, height_grid.shape[1], dtype=np.float32)
+    xx, yy = np.meshgrid(x, y, indexing="ij")
+    vertices = np.stack(
+        (xx, yy, height_grid.astype(np.float32) * vertical_scale),
+        axis=-1).reshape(-1, 3)
+
+    triangles = []
+    num_cols = height_grid.shape[1]
+    for row in range(height_grid.shape[0] - 1):
+        for col in range(height_grid.shape[1] - 1):
+            idx = row * num_cols + col
+            triangles.append([idx, idx + 1, idx + num_cols + 1])
+            triangles.append([idx, idx + num_cols + 1, idx + num_cols])
+    return vertices.astype(np.float32), np.asarray(triangles, dtype=np.uint32)
 
 
 def _compute_bar_centers(center_x, center_y, bar_spacing, bar_count, ladder_angle):

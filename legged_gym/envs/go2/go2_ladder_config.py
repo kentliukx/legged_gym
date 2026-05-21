@@ -38,7 +38,7 @@ class GO2LadderCfg( LeggedRobotCfg ):
         pass
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [-1.0, 0.0, 0.3] # x,y,z [m]
+        pos = [0.0, 0.0, 0.3] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
             "FL_thigh_joint": 0.8, "FL_hip_joint": 0.3, "FL_calf_joint": -1.6,
             "FR_thigh_joint": 0.8, "FR_hip_joint": -0.3, "FR_calf_joint": -1.6,
@@ -60,8 +60,8 @@ class GO2LadderCfg( LeggedRobotCfg ):
         file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf"
         name = "go2"
         foot_name = "calf"
-        penalize_contacts_on = ["thigh", "hip", "Head_upper", "Head_lower"]
-        terminate_after_contacts_on = []
+        penalize_contacts_on = ["thigh", "hip"]
+        terminate_after_contacts_on = ["base", "Head_upper", "Head_lower"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
 
     class domain_rand( LeggedRobotCfg.domain_rand):
@@ -75,4 +75,4 @@ class GO2LadderCfg( LeggedRobotCfg ):
 class GO2LadderCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
         experiment_name = 'go2_ladder'
-        max_iterations = 1500 # number of policy updates
+        max_iterations = 5000 # number of policy updates

@@ -161,6 +161,12 @@ class LeggedRobot(BaseTask):
         # update curriculum
         if self.cfg.terrain.curriculum:
             self._update_terrain_curriculum(env_ids)
+        elif self.custom_origins and hasattr(self, "terrain_origins"):
+            self._sample_terrain_levels_and_types(env_ids, randomize_ladder_level=True)
+            self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+            if hasattr(self, "terrain_platform_centers"):
+                self.goal_targets[env_ids] = self.terrain_platform_centers[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+                self._randomize_rough_targets(env_ids)
         # avoid updating command curriculum at each step since the maximum command is common to all envs
         if self.cfg.commands.curriculum and (self.common_step_counter % self.max_episode_length==0):
             self.update_command_curriculum(env_ids)
@@ -356,7 +362,7 @@ class LeggedRobot(BaseTask):
         self._update_platform_commands(env_ids)
 
     def _update_platform_commands(self, env_ids=None):
-        if not hasattr(self, "platform_targets"):
+        if not hasattr(self, "goal_targets"):
             return
 
         if env_ids is None:
@@ -364,7 +370,7 @@ class LeggedRobot(BaseTask):
         if len(env_ids) == 0:
             return
 
-        rel_world = self.platform_targets[env_ids, :3] - self.root_states[env_ids, :3]
+        rel_world = self.goal_targets[env_ids, :3] - self.root_states[env_ids, :3]
         rel_base = quat_rotate_inverse(self.base_quat[env_ids], rel_world)
         self.commands[env_ids] = 0.
         self.commands[env_ids, :2] = rel_base[:, :2]
@@ -373,7 +379,7 @@ class LeggedRobot(BaseTask):
         self.ladder_progress[env_ids] = self._get_ladder_progress(env_ids)
 
     def _get_ladder_progress(self, env_ids=None):
-        if not hasattr(self, "platform_targets"):
+        if not hasattr(self, "goal_targets"):
             if env_ids is None:
                 return torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
             return torch.zeros(len(env_ids), device=self.device, dtype=torch.float)
@@ -381,7 +387,7 @@ class LeggedRobot(BaseTask):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
 
-        target_vec = self.platform_targets[env_ids, :2] - self.env_origins[env_ids, :2]
+        target_vec = self.goal_targets[env_ids, :2] - self.env_origins[env_ids, :2]
         robot_vec = self.root_states[env_ids, :2] - self.env_origins[env_ids, :2]
         target_dist = torch.norm(target_vec, dim=1).clamp(min=1e-6)
         progress = torch.sum(robot_vec * target_vec, dim=1) / torch.square(target_dist)
@@ -466,12 +472,12 @@ class LeggedRobot(BaseTask):
             # don't change on initial reset
             return
         distance = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
-        if hasattr(self, "platform_targets"):
-            target_vec = self.platform_targets[env_ids, :2] - self.env_origins[env_ids, :2]
+        if hasattr(self, "goal_targets"):
+            target_vec = self.goal_targets[env_ids, :2] - self.env_origins[env_ids, :2]
             robot_vec = self.root_states[env_ids, :2] - self.env_origins[env_ids, :2]
             nominal_distance = torch.norm(target_vec, dim=1).clamp(min=1e-6)
             progress = torch.sum(robot_vec * target_vec, dim=1) / nominal_distance
-            goal_dist = torch.norm(self.root_states[env_ids, :2] - self.platform_targets[env_ids, :2], dim=1)
+            goal_dist = torch.norm(self.root_states[env_ids, :2] - self.goal_targets[env_ids, :2], dim=1)
             move_up = (goal_dist < self.cfg.rewards.goal_radius) | (progress > nominal_distance * 0.9)
             move_down = (progress < nominal_distance * 0.5) & ~move_up
         else:
@@ -482,11 +488,13 @@ class LeggedRobot(BaseTask):
         self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
         # Robots that solve the last level are sent to a random one
         self.terrain_levels[env_ids] = torch.where(self.terrain_levels[env_ids]>=self.max_terrain_level,
-                                                   torch.randint_like(self.terrain_levels[env_ids], self.max_terrain_level),
-                                                   torch.clip(self.terrain_levels[env_ids], 0)) # (the minumum level is zero)
+                                                   torch.randint(1, self.max_terrain_level, (len(env_ids),), device=self.device),
+                                                   torch.clamp(self.terrain_levels[env_ids], min=1)) # (the minumum ladder level is one)
+        self._sample_terrain_levels_and_types(env_ids)
         self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
         if hasattr(self, "terrain_platform_centers"):
-            self.platform_targets[env_ids] = self.terrain_platform_centers[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+            self.goal_targets[env_ids] = self.terrain_platform_centers[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+            self._randomize_rough_targets(env_ids)
     
     def update_command_curriculum(self, env_ids):
         """ Implements a curriculum of increasing commands
@@ -538,18 +546,25 @@ class LeggedRobot(BaseTask):
             return ladder_obs
 
         terrain_kwargs = self.cfg.terrain.terrain_kwargs
-        if self.custom_origins and self.cfg.terrain.curriculum and self.cfg.terrain.num_rows > 1:
-            difficulty = self.terrain_levels.float() / (self.cfg.terrain.num_rows - 1)
+        if self.custom_origins and self.cfg.terrain.curriculum and self.cfg.terrain.num_rows > 2:
+            difficulty = (self.terrain_levels.float() - 1.0).clamp(min=0.0) / (self.cfg.terrain.num_rows - 2)
         else:
             difficulty = torch.ones(self.num_envs, device=self.device, dtype=torch.float)
 
         bar_spacing = self._lerp_cfg_range(terrain_kwargs.get("bar_spacing", 0.0), difficulty)
         ladder_angle_deg = self._lerp_cfg_range(terrain_kwargs.get("ladder_angle", 0.0), difficulty)
+        if hasattr(self, "terrain_ladder_mask"):
+            is_ladder = self.terrain_ladder_mask[self.terrain_levels, self.terrain_types]
+            min_bar_spacing = self._lerp_cfg_range(terrain_kwargs.get("bar_spacing", 0.0), torch.zeros_like(difficulty))
+            bar_spacing = torch.where(is_ladder, bar_spacing, min_bar_spacing)
+            ladder_angle_deg = torch.where(is_ladder, ladder_angle_deg, torch.zeros_like(ladder_angle_deg))
         ladder_angle_rad = torch.deg2rad(ladder_angle_deg)
 
         forward = quat_apply(self.base_quat, self.forward_vec)
         base_heading = torch.atan2(forward[:, 1], forward[:, 0])
         ladder_up_yaw_rel = wrap_to_pi(-base_heading)
+        if hasattr(self, "terrain_ladder_mask"):
+            ladder_up_yaw_rel = torch.where(is_ladder, ladder_up_yaw_rel, torch.zeros_like(ladder_up_yaw_rel))
 
         ladder_obs[:, 0] = bar_spacing
         ladder_obs[:, 1] = bar_spacing * torch.sin(ladder_angle_rad)
@@ -608,7 +623,9 @@ class LeggedRobot(BaseTask):
         self.ladder_progress = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         if self.cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
             self.terrain_platform_centers = torch.from_numpy(self.terrain.platform_centers).to(self.device).to(torch.float)
-            self.platform_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
+            self.terrain_ladder_mask = torch.from_numpy(self.terrain.ladder_mask).to(self.device)
+            self.goal_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
+            self._randomize_rough_targets(torch.arange(self.num_envs, device=self.device))
             self.goal_dist[:] = torch.norm(self.commands[:, :2], dim=1)
             self.reached_goal[:, 0] = (self.goal_dist < self.cfg.rewards.goal_radius).float()
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
@@ -805,10 +822,15 @@ class LeggedRobot(BaseTask):
             self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
             # put robots at the origins defined by the terrain
             max_init_level = self.cfg.terrain.max_init_terrain_level
-            if not self.cfg.terrain.curriculum: max_init_level = self.cfg.terrain.num_rows - 1
-            self.terrain_levels = torch.randint(0, max_init_level+1, (self.num_envs,), device=self.device)
-            self.terrain_types = torch.div(torch.arange(self.num_envs, device=self.device), (self.num_envs/self.cfg.terrain.num_cols), rounding_mode='floor').to(torch.long)
+            if not self.cfg.terrain.curriculum:
+                max_init_level = self.cfg.terrain.num_rows - 1
+            max_init_level = max(1, max_init_level)
+            self.terrain_levels = torch.randint(1, max_init_level+1, (self.num_envs,), device=self.device)
+            self.terrain_types = torch.randint(0, self.cfg.terrain.num_cols, (self.num_envs,), device=self.device)
             self.max_terrain_level = self.cfg.terrain.num_rows
+            self._sample_terrain_levels_and_types(
+                torch.arange(self.num_envs, device=self.device),
+                randomize_ladder_level=not self.cfg.terrain.curriculum)
             self.terrain_origins = torch.from_numpy(self.terrain.env_origins).to(self.device).to(torch.float)
             self.env_origins[:] = self.terrain_origins[self.terrain_levels, self.terrain_types]
         else:
@@ -822,6 +844,45 @@ class LeggedRobot(BaseTask):
             self.env_origins[:, 0] = spacing * xx.flatten()[:self.num_envs]
             self.env_origins[:, 1] = spacing * yy.flatten()[:self.num_envs]
             self.env_origins[:, 2] = 0.
+
+    def _sample_terrain_levels_and_types(self, env_ids, randomize_ladder_level=False):
+        if self.cfg.terrain.mesh_type not in ["heightfield", "trimesh"]:
+            return
+        if not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
+        if len(env_ids) == 0:
+            return
+
+        terrain_num_cols = getattr(self.terrain, "num_cols", self.cfg.terrain.num_cols)
+        rough_prob = getattr(self.terrain, "rough_probability", 0.0)
+        use_rough = torch.rand(len(env_ids), device=self.device) < rough_prob
+        self.terrain_types[env_ids] = torch.randint(0, terrain_num_cols, (len(env_ids),), device=self.device)
+        ladder_levels = self.terrain_levels[env_ids].clamp(min=1)
+        if randomize_ladder_level:
+            ladder_levels = torch.randint(1, self.max_terrain_level, (len(env_ids),), device=self.device)
+        self.terrain_levels[env_ids] = torch.where(
+            use_rough,
+            torch.zeros(len(env_ids), dtype=torch.long, device=self.device),
+            ladder_levels)
+
+    def _randomize_rough_targets(self, env_ids):
+        if not hasattr(self, "goal_targets") or not hasattr(self, "terrain_ladder_mask"):
+            return
+        if not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
+        if len(env_ids) == 0:
+            return
+
+        is_ladder = self.terrain_ladder_mask[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+        rough_env_ids = env_ids[~is_ladder]
+        if len(rough_env_ids) == 0:
+            return
+
+        target_offsets = torch.rand(len(rough_env_ids), 2, device=self.device) - 0.5
+        target_offsets[:, 0] *= self.terrain.env_length
+        target_offsets[:, 1] *= self.terrain.env_width
+        self.goal_targets[rough_env_ids, :2] = self.env_origins[rough_env_ids, :2] + target_offsets
+        self.goal_targets[rough_env_ids, 2] = 0.0
 
     def _parse_cfg(self, cfg):
         self.dt = self.cfg.control.decimation * self.sim_params.dt
@@ -845,7 +906,13 @@ class LeggedRobot(BaseTask):
         self.gym.clear_lines(self.viewer)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
         sphere_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 1, 0))
+        target_geom = gymutil.WireframeSphereGeometry(0.08, 8, 8, None, color=(0, 1, 0))
         for i in range(self.num_envs):
+            if hasattr(self, "goal_targets"):
+                target = self.goal_targets[i].cpu().numpy()
+                target_pose = gymapi.Transform(gymapi.Vec3(target[0], target[1], target[2] + 0.1), r=None)
+                gymutil.draw_lines(target_geom, self.gym, self.viewer, self.envs[i], target_pose)
+
             base_pos = (self.root_states[i, :3]).cpu().numpy()
             heights = self.measured_heights[i].cpu().numpy()
             height_points = quat_apply_yaw(self.base_quat[i].repeat(heights.shape[0]), self.height_points[i]).cpu().numpy()

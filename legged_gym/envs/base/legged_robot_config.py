@@ -61,17 +61,21 @@ class LeggedRobotCfg(BaseConfig):
             "bar_mesh_file": "{LEGGED_GYM_ROOT_DIR}/resources/terrains/round_bar.STL",
             "bar_spacing": (0.15, 0.25),
             "bar_count": (10, 14),
-            "ladder_angle": (0, 90),
-            "bar_x_scale": (3.0, 1.0),
+            "ladder_angle": (10, 90),
+            "bar_x_scale": (1.0, 1.0),
             "platform_length": 2,
             "platform_width": 2,
             "platform_gap": 0.1,
+            "ladder_x_offset": 1.0,
+            "rough_probability": 0.3,
+            "rough_height_range": (0, 0.05),
+            "rough_grid_size": 0.1,
         }
-        max_init_terrain_level = 0 # starting curriculum state
+        max_init_terrain_level = 5 # starting curriculum state
         terrain_length = 8.
         terrain_width = 8.
         num_rows= 10 # number of terrain rows (levels)
-        num_cols = 50 # number of terrain cols (types)
+        num_cols = 20 # number of terrain cols (types)
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
 
@@ -151,12 +155,13 @@ class LeggedRobotCfg(BaseConfig):
             flat_orientation = -1.0
             torques = 0.0
             joints = -1e-4
+            dof_pos_limits = -1.0
             dof_vel = 0.0
             dof_acc = 0.0
             base_height = -0. 
             feet_air_time = 0.0
             collision = -0.1
-            base_collision = -1.0
+            base_collision = 0
             feet_stumble = 0.0
             action_rate = -0.01
             action_smoothness = -0.01
@@ -164,9 +169,9 @@ class LeggedRobotCfg(BaseConfig):
             stand_still = -0.5
             stand_still_contact = -0.5
 
-        only_positive_rewards = False # if true negative total rewards are clipped at zero (avoids early termination problems)
+        only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
-        soft_dof_pos_limit = 1. # percentage of urdf limits, values above this limit are penalized
+        soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.
         soft_torque_limit = 1.
         base_height_target = 0.3
@@ -255,7 +260,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 48 # per iteration
-        max_iterations = 1500 # number of policy updates
+        max_iterations = 5000 # number of policy updates
 
         # logging
         save_interval = 50 # check for potential saves every this many iterations
