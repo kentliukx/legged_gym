@@ -143,31 +143,39 @@ class LeggedRobotCfg(BaseConfig):
 
     class rewards:
         class scales:
+            # Primary task rewards
+            alive = 2
+            position_tracking = 3
+            heading_tracking = 0.5
+
+            # Slow movement rewards
+            lin_vel_z = -2
+            ang_vel_xy = -0.02
+
+            # Shaping rewards
+            flat_orientation_when_flat = -1.0
+            foot_slippage = -0.1
+            collision = -0.1
+            stand_still_when_reached_goal = -0.5
+            stand_still_contact_when_reached_goal = -0.5
+
+            # Slow movement rewards
+            action_rate = -0.01
+            action_smoothness = -0.01
+            torques = -1e-4
+            dof_vel = -1e-4
+            dof_acc = -5e-8
+            dof_pos_limits = -5
+
+            # Unused rewards
             termination = -0.0
             tracking_lin_vel = 0.0
             tracking_ang_vel = 0.0
-            position_tracking = 10.0
-            heading_tracking = 5
-            base_motion = 2
-            lin_vel_z = 0.0
-            ang_vel_xy = 0.0
-            orientation = -0.
-            flat_orientation = -1.0
-            torques = 0.0
-            joints = -1e-4
-            dof_pos_limits = -1.0
-            dof_vel = 0.0
-            dof_acc = 0.0
-            base_height = -0. 
-            feet_air_time = 0.0
-            collision = -0.1
+            orientation = 0
             base_collision = 0
             feet_stumble = 0.0
-            action_rate = -0.01
-            action_smoothness = -0.01
-            foot_slippage = -0.25
-            stand_still = -0.5
-            stand_still_contact = -0.5
+            base_height = 0 
+            feet_air_time = 0
 
         only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
@@ -178,9 +186,9 @@ class LeggedRobotCfg(BaseConfig):
         max_contact_force = 200. # forces above this value are penalized
         foot_slip_threshold = 1.0
         goal_radius = 0.15
-        goal_speed_limit = 0.5
+        goal_speed_limit = 0.7
         contact_force_threshold = 1.0
-        flat_height_threshold = 0.03
+        flat_height_threshold = 0.1
 
     class normalization:
         class obs_scales:
@@ -246,7 +254,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.01
+        entropy_coef = 0.001
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-3 #5.e-4

@@ -1092,18 +1092,6 @@ class LeggedRobot(BaseTask):
         heading_error = torch.atan2(self.commands[:, 1], self.commands[:, 0])
         return torch.exp(-10. * torch.square(heading_error)) * torch.exp(-4. * torch.square(goal_dist))
 
-    def _reward_base_motion(self):
-        return torch.exp(-torch.square(self.base_lin_vel[:, 2])) + torch.exp(-0.5 * torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1))
-
-    def _reward_joints(self):
-        dof_acc = (self.dof_vel - self.last_dof_vel) / self.dt
-        # dof acc is excessively large so we don't consider it
-        return torch.sum(torch.square(self.torques) + torch.square(self.dof_vel) + 0 * torch.square(dof_acc), dim=1)
-
-    def _reward_foot_slip(self):
-        # Penalize foot slip by looking at the horizontal contact forces of the feet
-        return torch.sum(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=-1) > self.cfg.rewards.foot_slip_threshold, dim=1)
-
     def _reward_foot_slippage(self):
         foot_contacts = self._get_foot_contacts().float()
         foot_lin_vel_world = self.rigid_body_states[:, self.feet_indices, 7:10]
@@ -1111,10 +1099,7 @@ class LeggedRobot(BaseTask):
             self.base_quat.unsqueeze(1).repeat(1, len(self.feet_indices), 1).reshape(-1, 4),
             foot_lin_vel_world.reshape(-1, 3)
         ).view(self.num_envs, len(self.feet_indices), 3)
-        friction_scale = torch.ones(self.num_envs, device=self.device)
-        if hasattr(self, "friction_coeffs"):
-            friction_scale = 1. - 0.81 * (self.friction_coeffs.squeeze(-1).to(self.device) < 0.5).float()
-        return torch.sum(foot_contacts * torch.norm(foot_lin_vel_base[:, :, :2], dim=2) * friction_scale.unsqueeze(1), dim=1)
+        return torch.sum(foot_contacts * torch.norm(foot_lin_vel_base[:, :, :2], dim=2), dim=1)
 
     def _reward_feet_air_time(self):
         # Reward long steps
@@ -1134,19 +1119,21 @@ class LeggedRobot(BaseTask):
         return torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\
              5 *torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)
         
-    def _reward_stand_still(self):
-        # Penalize motion at zero commands
-        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+    def _reward_stand_still_when_reached_goal(self):
+        goal_reached, _ = self._get_goal_delta()
+        flat_mask = self._get_flat_terrain_mask()
+        desired_dof_pos = self.actions * self.cfg.control.action_scale + self.default_dof_pos
+        return flat_mask * goal_reached * torch.sum(torch.abs(desired_dof_pos - self.default_dof_pos), dim=1)
 
     def _reward_action_smoothness(self):
         return torch.sum(torch.square(self.last_last_actions - 2. * self.last_actions + self.actions), dim=1)
 
-    def _reward_flat_orientation(self):
+    def _reward_flat_orientation_when_flat(self):
         goal_reached, _ = self._get_goal_delta()
         flat_mask = self._get_flat_terrain_mask()
-        return flat_mask * (1. + 8. * goal_reached) * torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
+        return flat_mask * (1. + 1. * goal_reached) * torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
 
-    def _reward_stand_still_contact(self):
+    def _reward_stand_still_contact_when_reached_goal(self):
         goal_reached, _ = self._get_goal_delta()
         missing_contacts = (~self._get_foot_contacts()).float()
         return goal_reached * torch.sum(missing_contacts, dim=1)
