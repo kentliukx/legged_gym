@@ -70,6 +70,8 @@ class Terrain:
         self.env_origins = np.zeros((cfg.num_rows, self.num_cols, 3))
         self.platform_centers = np.zeros((cfg.num_rows, self.num_cols, 3), dtype=np.float32)
         self.ladder_mask = np.ones((cfg.num_rows, self.num_cols), dtype=np.bool_)
+        self.ladder_bar_spacing = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
+        self.ladder_angles = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
 
         self.width_per_env_pixels = int(self.env_width / cfg.horizontal_scale)
         self.length_per_env_pixels = int(self.env_length / cfg.horizontal_scale)
@@ -105,7 +107,6 @@ class Terrain:
         bar_vertices, bar_triangles = load_stl_mesh(bar_mesh_file)
         all_vertices = []
         all_triangles = []
-        row_cache = {}
         vertex_offset = 0
         self.rough_probability = float(np.clip(rough_probability, 0.0, 1.0))
 
@@ -129,6 +130,7 @@ class Terrain:
             self.ladder_mask[i, j] = not is_rough
 
             if is_rough:
+                self.ladder_angles[i, j] = 0.0
                 local_vertices, local_triangles, local_height_field, platform_center = generate_random_rough_mesh(
                     env_length=self.env_length,
                     env_width=self.env_width,
@@ -138,40 +140,40 @@ class Terrain:
                     rough_height_range=rough_height_range,
                     rough_grid_size=rough_grid_size)
             else:
-                if i not in row_cache:
-                    row_difficulty = ((i - 1) / (self.cfg.num_rows - 2)
-                                      if self.cfg.curriculum and self.cfg.num_rows > 2
-                                      else difficulty)
-                    bar_centers, prepared_bar_vertices, local_vertices, local_triangles, platform_center = generate_ladder_bar_mesh(
-                        env_length=self.env_length,
-                        env_width=self.env_width,
-                        difficulty=row_difficulty,
-                        bar_spacing=bar_spacing,
-                        bar_count=bar_count,
-                        ladder_angle=ladder_angle,
-                        bar_x_scale=bar_x_scale,
-                        platform_length=platform_length,
-                        platform_width=platform_width,
-                        platform_gap=platform_gap,
-                        x_offset=ladder_x_offset,
-                        bar_vertices=bar_vertices,
-                        bar_triangles=bar_triangles)
+                row_difficulty = ((i - 1) / (self.cfg.num_rows - 2)
+                                  if self.cfg.curriculum and self.cfg.num_rows > 2
+                                  else difficulty)
+                tile_bar_spacing = _sample_range(bar_spacing)
+                tile_ladder_angle = _lerp_range(ladder_angle, row_difficulty)
+                self.ladder_bar_spacing[i, j] = tile_bar_spacing
+                self.ladder_angles[i, j] = tile_ladder_angle
+                bar_centers, prepared_bar_vertices, local_vertices, local_triangles, platform_center = generate_ladder_bar_mesh(
+                    env_length=self.env_length,
+                    env_width=self.env_width,
+                    difficulty=row_difficulty,
+                    bar_spacing=tile_bar_spacing,
+                    bar_count=bar_count,
+                    ladder_angle=tile_ladder_angle,
+                    bar_x_scale=bar_x_scale,
+                    platform_length=platform_length,
+                    platform_width=platform_width,
+                    platform_gap=platform_gap,
+                    x_offset=ladder_x_offset,
+                    bar_vertices=bar_vertices,
+                    bar_triangles=bar_triangles)
 
-                    # Height scan is intentionally simple: inside a bar/platform XY
-                    # range means returning the bar center/platform top height.
-                    local_height_field = rasterize_ladder_bars(
-                        horizontal_scale=self.cfg.horizontal_scale,
-                        vertical_scale=self.cfg.vertical_scale,
-                        num_rows=self.length_per_env_pixels,
-                        num_cols=self.width_per_env_pixels,
-                        bar_centers=bar_centers,
-                        bar_vertices=prepared_bar_vertices,
-                        platform_length=platform_length,
-                        platform_width=platform_width,
-                        platform_gap=platform_gap)
-                    row_cache[i] = (local_vertices, local_triangles, local_height_field, platform_center)
-
-                local_vertices, local_triangles, local_height_field, platform_center = row_cache[i]
+                # Height scan is intentionally simple: inside a bar/platform XY
+                # range means returning the bar center/platform top height.
+                local_height_field = rasterize_ladder_bars(
+                    horizontal_scale=self.cfg.horizontal_scale,
+                    vertical_scale=self.cfg.vertical_scale,
+                    num_rows=self.length_per_env_pixels,
+                    num_cols=self.width_per_env_pixels,
+                    bar_centers=bar_centers,
+                    bar_vertices=prepared_bar_vertices,
+                    platform_length=platform_length,
+                    platform_width=platform_width,
+                    platform_gap=platform_gap)
 
             start_x = self.border + i * self.length_per_env_pixels
             start_y = self.border + j * self.width_per_env_pixels
@@ -496,6 +498,16 @@ def _lerp_range(value_range, difficulty):
     if len(value_range) != 2:
         raise ValueError("range values must be scalars or two-element sequences")
     return float(value_range[0] + (value_range[1] - value_range[0]) * difficulty)
+
+
+def _sample_range(value_range):
+    if np.isscalar(value_range):
+        return float(value_range)
+    if len(value_range) != 2:
+        raise ValueError("range values must be scalars or two-element sequences")
+    low = min(value_range[0], value_range[1])
+    high = max(value_range[0], value_range[1])
+    return float(np.random.uniform(low, high))
 
 
 def load_stl_mesh(mesh_file):

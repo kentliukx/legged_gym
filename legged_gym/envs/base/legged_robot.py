@@ -222,6 +222,7 @@ class LeggedRobot(BaseTask):
         """ Computes observations
         """
         ladder_obs = self._get_ladder_observations()
+        has_ladder_obs = self._get_has_ladder_observations()
         height_scan = torch.clip(
                 self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1) * self.obs_scales.height_measurements
 
@@ -236,6 +237,7 @@ class LeggedRobot(BaseTask):
             # goal
             self.commands * self.commands_scale,
             self.reached_goal,
+            has_ladder_obs,
             # ladder param and pose
             ladder_obs,
             # height scan
@@ -522,23 +524,35 @@ class LeggedRobot(BaseTask):
         noise_vec[:3] = noise_scales.lin_vel * noise_level * self.obs_scales.lin_vel
         noise_vec[3:6] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
         noise_vec[6:9] = noise_scales.gravity * noise_level
-        noise_vec[9:11] = 0. # commands
-        noise_vec[11:12] = 0. # reached goal flag
-        noise_vec[12:16] = 0. # ladder geometry
-        num_height_obs = len(self.cfg.terrain.measured_points_x) * len(self.cfg.terrain.measured_points_y) if self.cfg.terrain.measure_heights else 0
-        if self.cfg.terrain.measure_heights:
-            noise_vec[16:16 + num_height_obs] = (
-                noise_scales.height_measurements * noise_level * self.obs_scales.height_measurements
-            )
-        dof_pos_start = 16 + num_height_obs
-        noise_vec[dof_pos_start:dof_pos_start + self.num_actions] = (
+        noise_vec[9:9 + self.num_actions] = (
             noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
         )
-        dof_vel_start = dof_pos_start + self.num_actions
+        dof_vel_start = 9 + self.num_actions
         noise_vec[dof_vel_start:dof_vel_start + self.num_actions] = (
             noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
         )
+        action_start = dof_vel_start + self.num_actions
+        command_start = action_start + self.num_actions
+        noise_vec[command_start:command_start + self.cfg.commands.num_commands] = 0. # commands
+        reached_goal_start = command_start + self.cfg.commands.num_commands
+        noise_vec[reached_goal_start:reached_goal_start + 1] = 0. # reached goal flag
+        has_ladder_start = reached_goal_start + 1
+        noise_vec[has_ladder_start:has_ladder_start + 1] = 0. # has ladder flag
+        ladder_obs_start = has_ladder_start + 1
+        noise_vec[ladder_obs_start:ladder_obs_start + 4] = 0. # ladder geometry
+        num_height_obs = len(self.cfg.terrain.measured_points_x) * len(self.cfg.terrain.measured_points_y) if self.cfg.terrain.measure_heights else 0
+        if self.cfg.terrain.measure_heights:
+            height_obs_start = ladder_obs_start + 4
+            noise_vec[height_obs_start:height_obs_start + num_height_obs] = (
+                noise_scales.height_measurements * noise_level * self.obs_scales.height_measurements
+            )
         return noise_vec
+
+    def _get_has_ladder_observations(self):
+        has_ladder = torch.zeros(self.num_envs, 1, device=self.device, dtype=torch.float)
+        if hasattr(self, "terrain_ladder_mask"):
+            has_ladder[:, 0] = self.terrain_ladder_mask[self.terrain_levels, self.terrain_types].float()
+        return has_ladder
 
     def _get_ladder_observations(self):
         ladder_obs = torch.zeros(self.num_envs, 4, device=self.device, dtype=torch.float)
@@ -546,18 +560,14 @@ class LeggedRobot(BaseTask):
             return ladder_obs
 
         terrain_kwargs = self.cfg.terrain.terrain_kwargs
-        if self.custom_origins and self.cfg.terrain.curriculum and self.cfg.terrain.num_rows > 2:
-            difficulty = (self.terrain_levels.float() - 1.0).clamp(min=0.0) / (self.cfg.terrain.num_rows - 2)
-        else:
-            difficulty = torch.ones(self.num_envs, device=self.device, dtype=torch.float)
-
+        difficulty = torch.ones(self.num_envs, device=self.device, dtype=torch.float)
         bar_spacing = self._lerp_cfg_range(terrain_kwargs.get("bar_spacing", 0.0), difficulty)
         ladder_angle_deg = self._lerp_cfg_range(terrain_kwargs.get("ladder_angle", 0.0), difficulty)
+        if hasattr(self, "terrain_ladder_bar_spacing"):
+            bar_spacing = self.terrain_ladder_bar_spacing[self.terrain_levels, self.terrain_types]
+            ladder_angle_deg = self.terrain_ladder_angles[self.terrain_levels, self.terrain_types]
         if hasattr(self, "terrain_ladder_mask"):
             is_ladder = self.terrain_ladder_mask[self.terrain_levels, self.terrain_types]
-            min_bar_spacing = self._lerp_cfg_range(terrain_kwargs.get("bar_spacing", 0.0), torch.zeros_like(difficulty))
-            bar_spacing = torch.where(is_ladder, bar_spacing, min_bar_spacing)
-            ladder_angle_deg = torch.where(is_ladder, ladder_angle_deg, torch.zeros_like(ladder_angle_deg))
         ladder_angle_rad = torch.deg2rad(ladder_angle_deg)
 
         forward = quat_apply(self.base_quat, self.forward_vec)
@@ -624,6 +634,8 @@ class LeggedRobot(BaseTask):
         if self.cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
             self.terrain_platform_centers = torch.from_numpy(self.terrain.platform_centers).to(self.device).to(torch.float)
             self.terrain_ladder_mask = torch.from_numpy(self.terrain.ladder_mask).to(self.device)
+            self.terrain_ladder_bar_spacing = torch.from_numpy(self.terrain.ladder_bar_spacing).to(self.device).to(torch.float)
+            self.terrain_ladder_angles = torch.from_numpy(self.terrain.ladder_angles).to(self.device).to(torch.float)
             self.goal_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
             self._randomize_rough_targets(torch.arange(self.num_envs, device=self.device))
             self.goal_dist[:] = torch.norm(self.commands[:, :2], dim=1)
@@ -878,9 +890,15 @@ class LeggedRobot(BaseTask):
         if len(rough_env_ids) == 0:
             return
 
-        target_offsets = torch.rand(len(rough_env_ids), 2, device=self.device) - 0.5
-        target_offsets[:, 0] *= self.terrain.env_length
-        target_offsets[:, 1] *= self.terrain.env_width
+        target_angle = (torch.rand(len(rough_env_ids), device=self.device) - 0.5) * np.deg2rad(60.0)
+        direction = torch.stack((torch.cos(target_angle), torch.sin(target_angle)), dim=1)
+        max_distance_x = (0.5 * self.terrain.env_length) / direction[:, 0].clamp(min=1e-6)
+        max_distance_y = torch.full_like(max_distance_x, 0.5 * self.terrain.env_width)
+        side_distance = max_distance_y / torch.abs(direction[:, 1]).clamp(min=1e-6)
+        max_distance = torch.minimum(max_distance_x, side_distance)
+        min_distance = torch.minimum(torch.full_like(max_distance, 0.5), 0.5 * max_distance)
+        target_distance = min_distance + torch.rand(len(rough_env_ids), device=self.device) * (max_distance - min_distance)
+        target_offsets = direction * target_distance.unsqueeze(1)
         self.goal_targets[rough_env_ids, :2] = self.env_origins[rough_env_ids, :2] + target_offsets
         self.goal_targets[rough_env_ids, 2] = 0.0
 
