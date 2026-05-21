@@ -157,6 +157,7 @@ class LeggedRobot(BaseTask):
         """
         if len(env_ids) == 0:
             return
+        episode_ladder_progress = self._get_ladder_progress(env_ids).mean()
         # update curriculum
         if self.cfg.terrain.curriculum:
             self._update_terrain_curriculum(env_ids)
@@ -185,6 +186,7 @@ class LeggedRobot(BaseTask):
         # log additional curriculum info
         if self.cfg.terrain.curriculum:
             self.extras["episode"]["terrain_level"] = torch.mean(self.terrain_levels.float())
+            self.extras["episode"]["ladder_progress"] = episode_ladder_progress
         if self.cfg.commands.curriculum:
             self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
         # send timeout info to the algorithm
@@ -368,6 +370,22 @@ class LeggedRobot(BaseTask):
         self.commands[env_ids, :2] = rel_base[:, :2]
         self.goal_dist[env_ids] = torch.norm(rel_base[:, :2], dim=1)
         self.reached_goal[env_ids, 0] = (self.goal_dist[env_ids] < self.cfg.rewards.goal_radius).float()
+        self.ladder_progress[env_ids] = self._get_ladder_progress(env_ids)
+
+    def _get_ladder_progress(self, env_ids=None):
+        if not hasattr(self, "platform_targets"):
+            if env_ids is None:
+                return torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
+            return torch.zeros(len(env_ids), device=self.device, dtype=torch.float)
+
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+
+        target_vec = self.platform_targets[env_ids, :2] - self.env_origins[env_ids, :2]
+        robot_vec = self.root_states[env_ids, :2] - self.env_origins[env_ids, :2]
+        target_dist = torch.norm(target_vec, dim=1).clamp(min=1e-6)
+        progress = torch.sum(robot_vec * target_vec, dim=1) / torch.square(target_dist)
+        return torch.clamp(progress, 0.0, 1.0)
 
     def _compute_torques(self, actions):
         """ Compute torques from actions.
@@ -444,17 +462,22 @@ class LeggedRobot(BaseTask):
             env_ids (List[int]): ids of environments being reset
         """
         # Implement Terrain curriculum
-        if not self.init_done:
+        if not self.init_done or self.common_step_counter == 0:
             # don't change on initial reset
             return
         distance = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
-        # robots that walked far enough progress to harder terains
-        move_up = distance > self.terrain.env_length / 2
-        # robots that walked less than half of their required distance go to simpler terrains
         if hasattr(self, "platform_targets"):
-            nominal_distance = torch.norm(self.platform_targets[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
-            move_down = (distance < nominal_distance * 0.5) * ~move_up
+            target_vec = self.platform_targets[env_ids, :2] - self.env_origins[env_ids, :2]
+            robot_vec = self.root_states[env_ids, :2] - self.env_origins[env_ids, :2]
+            nominal_distance = torch.norm(target_vec, dim=1).clamp(min=1e-6)
+            progress = torch.sum(robot_vec * target_vec, dim=1) / nominal_distance
+            goal_dist = torch.norm(self.root_states[env_ids, :2] - self.platform_targets[env_ids, :2], dim=1)
+            move_up = (goal_dist < self.cfg.rewards.goal_radius) | (progress > nominal_distance * 0.9)
+            move_down = (progress < nominal_distance * 0.5) & ~move_up
         else:
+            # robots that walked far enough progress to harder terains
+            move_up = distance > self.terrain.env_length / 2
+            # robots that walked less than half of their required distance go to simpler terrains
             move_down = ~move_up
         self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
         # Robots that solve the last level are sent to a random one
@@ -582,6 +605,7 @@ class LeggedRobot(BaseTask):
         self.commands_scale = torch.ones(self.cfg.commands.num_commands, device=self.device, requires_grad=False)
         self.goal_dist = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         self.reached_goal = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
+        self.ladder_progress = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         if self.cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
             self.terrain_platform_centers = torch.from_numpy(self.terrain.platform_centers).to(self.device).to(torch.float)
             self.platform_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
