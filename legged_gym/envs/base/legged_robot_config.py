@@ -42,7 +42,7 @@ class LeggedRobotCfg(BaseConfig):
 
     class terrain:
         mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
-        horizontal_scale = 0.1 # [m]
+        horizontal_scale = 0.01 # [m]
         vertical_scale = 0.005 # [m]
         border_size = 25 # [m]
         curriculum = True
@@ -60,18 +60,18 @@ class LeggedRobotCfg(BaseConfig):
         terrain_kwargs = {
             "bar_mesh_file": "{LEGGED_GYM_ROOT_DIR}/resources/terrains/round_bar.STL",
             "bar_spacing": (0.15, 0.25),
-            "bar_count": (8, 14),
-            "ladder_angle": (10, 90),
+            "bar_count": (10, 14),
+            "ladder_angle": (0, 90),
             "bar_x_scale": (3.0, 1.0),
             "platform_length": 2,
             "platform_width": 2,
             "platform_gap": 0.1,
         }
-        max_init_terrain_level = 5 # starting curriculum state
+        max_init_terrain_level = 0 # starting curriculum state
         terrain_length = 8.
         terrain_width = 8.
         num_rows= 10 # number of terrain rows (levels)
-        num_cols = 20 # number of terrain cols (types)
+        num_cols = 50 # number of terrain cols (types)
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
 
@@ -140,50 +140,50 @@ class LeggedRobotCfg(BaseConfig):
     class rewards:
         class scales:
             termination = -0.0
-            tracking_lin_vel = 1.0
-            tracking_ang_vel = 0.5
-            position_tracking = 0.0
-            heading_tracking = 0.0
-            base_motion = 0.0
-            lin_vel_z = -2.0
-            ang_vel_xy = -0.05
+            tracking_lin_vel = 0.0
+            tracking_ang_vel = 0.0
+            position_tracking = 10.0
+            heading_tracking = 5
+            base_motion = 2
+            lin_vel_z = 0.0
+            ang_vel_xy = 0.0
             orientation = -0.
-            flat_orientation = 0.0
-            torques = -0.00001
-            joints = 0.0
-            dof_vel = -0.
-            dof_acc = -2.5e-7
+            flat_orientation = -1.0
+            torques = 0.0
+            joints = -1e-4
+            dof_vel = 0.0
+            dof_acc = 0.0
             base_height = -0. 
-            feet_air_time =  1.0
-            collision = -1.
-            base_collision = 0.0
-            feet_stumble = -0.0 
+            feet_air_time = 0.0
+            collision = -0.1
+            base_collision = -1.0
+            feet_stumble = 0.0
             action_rate = -0.01
-            action_smoothness = 0.0
-            foot_slippage = 0.0
-            stand_still = -0.
-            stand_still_contact = 0.0
+            action_smoothness = -0.01
+            foot_slippage = -0.25
+            stand_still = -0.5
+            stand_still_contact = -0.5
 
-        only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
+        only_positive_rewards = False # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         soft_dof_pos_limit = 1. # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.
         soft_torque_limit = 1.
-        base_height_target = 1.
-        max_contact_force = 100. # forces above this value are penalized
+        base_height_target = 0.3
+        max_contact_force = 500. # forces above this value are penalized
         foot_slip_threshold = 1.0
         goal_radius = 0.15
         goal_speed_limit = 0.7
         contact_force_threshold = 1.0
-        flat_height_threshold = 0.02
+        flat_height_threshold = 0.03
 
     class normalization:
         class obs_scales:
-            lin_vel = 2.0
+            lin_vel = 1.0
             ang_vel = 0.25
             dof_pos = 1.0
             dof_vel = 0.05
-            height_measurements = 5.0
+            height_measurements = 1.0
         clip_observations = 100.
         clip_actions = 100.
 

@@ -32,29 +32,10 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class GO2LadderCfg( LeggedRobotCfg ):
     class env( LeggedRobotCfg.env ):
-        num_envs = 4096
-        num_actions = 12
+        pass
 
     class terrain( LeggedRobotCfg.terrain ):
-        mesh_type = 'trimesh'
-        horizontal_scale = 0.01
-        vertical_scale = 0.005
-        curriculum = True
-        measure_heights = True
-        terrain_length = 8.
-        terrain_width = 8.
-        num_rows = 10
-        num_cols = 20
-        terrain_kwargs = {
-            "bar_mesh_file": "{LEGGED_GYM_ROOT_DIR}/resources/terrains/round_bar.STL",
-            "bar_spacing": (0.15, 0.25),
-            "bar_count": (10, 14),
-            "ladder_angle": (0, 90),
-            "bar_x_scale": (3.0, 1.0),
-            "platform_length": 2,
-            "platform_width": 2,
-            "platform_gap": 0.1,
-        }
+        pass
 
     class init_state( LeggedRobotCfg.init_state ):
         pos = [-1.0, 0.0, 0.3] # x,y,z [m]
@@ -89,40 +70,9 @@ class GO2LadderCfg( LeggedRobotCfg ):
         push_robots = False
   
     class rewards( LeggedRobotCfg.rewards ):
-        base_height_target = 0.3
-        max_contact_force = 500.
-        only_positive_rewards = False
-        goal_radius = 0.15
-        goal_speed_limit = 0.7
-        contact_force_threshold = 1.0
-        flat_height_threshold = 0.03
-        class scales( LeggedRobotCfg.rewards.scales ):
-            tracking_lin_vel = 0.0
-            tracking_ang_vel = 0.0
-            lin_vel_z = 0.0
-            ang_vel_xy = 0.0
-            orientation = 0.0
-            torques = 0.0
-            dof_vel = 0.0
-            dof_acc = 0.0
-            feet_air_time = 0.0
-            feet_stumble = 0.0
-            action_rate = -0.01
-            stand_still = -0.5
-
-            position_tracking = 10.0
-            heading_tracking = 5
-            base_motion = 2
-            joints = -1e-4
-            action_smoothness = -0.01
-            foot_slippage = -0.25
-            flat_orientation = -1.0
-            stand_still_contact = -0.5
-            collision = -0.1
-            base_collision = -1.0
+        pass
 
 class GO2LadderCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
-        run_name = ''
         experiment_name = 'go2_ladder'
-        load_run = -1
+        max_iterations = 1500 # number of policy updates
