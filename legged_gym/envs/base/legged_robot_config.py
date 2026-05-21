@@ -66,9 +66,9 @@ class LeggedRobotCfg(BaseConfig):
             "platform_length": 2,
             "platform_width": 2,
             "platform_gap": 0.1,
-            "ladder_x_offset": 1.0,
+            "ladder_x_offset": -1.0,
             "rough_probability": 0.3,
-            "rough_height_range": (0, 0.05),
+            "rough_height_range": (0, 0.04),
             "rough_grid_size": 0.1,
         }
         max_init_terrain_level = 5 # starting curriculum state
