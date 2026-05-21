@@ -42,10 +42,10 @@ import torch
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     # override some parameters for testing
-    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 50)
-    env_cfg.terrain.num_rows = 5
-    env_cfg.terrain.num_cols = 5
-    env_cfg.terrain.curriculum = False
+
+    env_cfg.terrain.num_cols = 1
+    env_cfg.env.num_envs = 1
+    env_cfg.terrain.curriculum = True
     env_cfg.noise.add_noise = False
     env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.push_robots = False
@@ -87,15 +87,18 @@ def play(args):
             env.set_camera(camera_position, camera_position + camera_direction)
 
         if i < stop_state_log:
+            command_x = env.commands[robot_index, 0].item() if env.commands.shape[1] > 0 else 0.0
+            command_y = env.commands[robot_index, 1].item() if env.commands.shape[1] > 1 else 0.0
+            command_yaw = env.commands[robot_index, 2].item() if env.commands.shape[1] > 2 else 0.0
             logger.log_states(
                 {
                     'dof_pos_target': actions[robot_index, joint_index].item() * env.cfg.control.action_scale,
                     'dof_pos': env.dof_pos[robot_index, joint_index].item(),
                     'dof_vel': env.dof_vel[robot_index, joint_index].item(),
                     'dof_torque': env.torques[robot_index, joint_index].item(),
-                    'command_x': env.commands[robot_index, 0].item(),
-                    'command_y': env.commands[robot_index, 1].item(),
-                    'command_yaw': env.commands[robot_index, 2].item(),
+                    'command_x': command_x,
+                    'command_y': command_y,
+                    'command_yaw': command_yaw,
                     'base_vel_x': env.base_lin_vel[robot_index, 0].item(),
                     'base_vel_y': env.base_lin_vel[robot_index, 1].item(),
                     'base_vel_z': env.base_lin_vel[robot_index, 2].item(),
