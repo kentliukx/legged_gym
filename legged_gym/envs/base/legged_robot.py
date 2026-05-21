@@ -924,11 +924,13 @@ class LeggedRobot(BaseTask):
         self.gym.clear_lines(self.viewer)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
         sphere_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 1, 0))
-        target_geom = gymutil.WireframeSphereGeometry(0.08, 8, 8, None, color=(0, 1, 0))
+        target_unreached_geom = gymutil.WireframeSphereGeometry(0.08, 8, 8, None, color=(0, 0, 1))
+        target_reached_geom = gymutil.WireframeSphereGeometry(0.08, 8, 8, None, color=(0, 1, 0))
         for i in range(self.num_envs):
             if hasattr(self, "goal_targets"):
                 target = self.goal_targets[i].cpu().numpy()
                 target_pose = gymapi.Transform(gymapi.Vec3(target[0], target[1], target[2] + 0.1), r=None)
+                target_geom = target_reached_geom if self.reached_goal[i, 0] > 0.5 else target_unreached_geom
                 gymutil.draw_lines(target_geom, self.gym, self.viewer, self.envs[i], target_pose)
 
             base_pos = (self.root_states[i, :3]).cpu().numpy()
