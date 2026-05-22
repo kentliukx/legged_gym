@@ -68,7 +68,7 @@ class LeggedRobotCfg(BaseConfig):
             "platform_gap": 0.1,
             "ladder_x_offset": -1.0,
             "rough_probability": 0.3,
-            "rough_height_range": (0, 0.04),
+            "rough_height_range": (0, 0.02),
             "rough_grid_size": 0.1,
         }
         max_init_terrain_level = 5 # starting curriculum state
@@ -254,7 +254,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.001
+        entropy_coef = 0.01
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-3 #5.e-4
