@@ -176,6 +176,8 @@ class LeggedRobot(BaseTask):
         self._reset_root_states(env_ids)
 
         self._resample_commands(env_ids)
+        if hasattr(self, "goal_targets"):
+            self.min_goal_dist[env_ids] = self.goal_dist[env_ids]
 
         # reset buffers
         self.last_actions[env_ids] = 0.
@@ -629,6 +631,7 @@ class LeggedRobot(BaseTask):
         self.commands = torch.zeros(self.num_envs, self.cfg.commands.num_commands, dtype=torch.float, device=self.device, requires_grad=False)
         self.commands_scale = torch.ones(self.cfg.commands.num_commands, device=self.device, requires_grad=False)
         self.goal_dist = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.min_goal_dist = torch.full((self.num_envs,), float("inf"), dtype=torch.float, device=self.device, requires_grad=False)
         self.reached_goal = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
         self.ladder_progress = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         if self.cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
@@ -638,8 +641,8 @@ class LeggedRobot(BaseTask):
             self.terrain_ladder_angles = torch.from_numpy(self.terrain.ladder_angles).to(self.device).to(torch.float)
             self.goal_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
             self._randomize_rough_targets(torch.arange(self.num_envs, device=self.device))
-            self.goal_dist[:] = torch.norm(self.commands[:, :2], dim=1)
-            self.reached_goal[:, 0] = (self.goal_dist < self.cfg.rewards.goal_radius).float()
+            self._update_platform_commands(torch.arange(self.num_envs, device=self.device))
+            self.min_goal_dist[:] = self.goal_dist
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
@@ -1083,9 +1086,13 @@ class LeggedRobot(BaseTask):
     def _reward_position_tracking(self):
         goal_reached, goal_dist = self._get_goal_delta()
         goal_dir = self.commands[:, :2] / goal_dist.unsqueeze(1).clamp(min=1e-6)
-        forward_speed = torch.sum(self.base_lin_vel[:, :2] * goal_dir, dim=1)
-        speed_over = torch.clamp(torch.norm(self.base_lin_vel[:, :2], dim=1) - self.cfg.rewards.goal_speed_limit, min=0.)
-        return (1. - goal_reached) * (forward_speed - torch.square(speed_over)) + 1.5 * goal_reached
+        velocity_xy = self.base_lin_vel[:, :2]
+        velocity_norm = torch.norm(velocity_xy, dim=1).clamp(min=1e-6)
+        velocity_goal_cos = torch.sum(velocity_xy * goal_dir, dim=1) / velocity_norm
+        speed_over = torch.clamp(velocity_norm - self.cfg.rewards.goal_speed_limit, min=0.)
+        min_dist_decrease_speed = torch.clamp(self.min_goal_dist - goal_dist, min=0.) / self.dt
+        self.min_goal_dist[:] = torch.minimum(self.min_goal_dist, goal_dist)
+        return (1. - goal_reached) * ((min_dist_decrease_speed - torch.square(speed_over)) * velocity_goal_cos ) + 1.5 * goal_reached
 
     def _reward_heading_tracking(self):
         _, goal_dist = self._get_goal_delta()
