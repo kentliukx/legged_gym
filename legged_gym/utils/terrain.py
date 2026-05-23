@@ -73,14 +73,22 @@ class Terrain:
         self.ladder_bar_spacing = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
         self.ladder_angles = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
 
+        self.obs_horizontal_scale = getattr(cfg, "obs_horizontal_scale", cfg.horizontal_scale)
+
         self.width_per_env_pixels = int(self.env_width / cfg.horizontal_scale)
         self.length_per_env_pixels = int(self.env_length / cfg.horizontal_scale)
+        self.obs_width_per_env_pixels = int(self.env_width / self.obs_horizontal_scale)
+        self.obs_length_per_env_pixels = int(self.env_length / self.obs_horizontal_scale)
 
         self.border = int(cfg.border_size/self.cfg.horizontal_scale)
+        self.obs_border = int(cfg.border_size / self.obs_horizontal_scale)
         self.tot_cols = int(self.num_cols * self.width_per_env_pixels) + 2 * self.border
         self.tot_rows = int(cfg.num_rows * self.length_per_env_pixels) + 2 * self.border
+        self.obs_tot_cols = int(self.num_cols * self.obs_width_per_env_pixels) + 2 * self.obs_border
+        self.obs_tot_rows = int(cfg.num_rows * self.obs_length_per_env_pixels) + 2 * self.obs_border
 
-        self.height_field_raw = np.zeros((self.tot_rows, self.tot_cols), dtype=np.int16)
+        self.height_field_raw = np.zeros((self.obs_tot_rows, self.obs_tot_cols), dtype=np.int16)
+        self.physics_height_field_raw = np.zeros((self.tot_rows, self.tot_cols), dtype=np.int16)
         self.vertices = None
         self.triangles = None
 
@@ -88,6 +96,7 @@ class Terrain:
         self._selected_ladder_bars_terrain(**terrain_kwargs)
 
         self.heightsamples = self.height_field_raw
+        self.physics_heightsamples = self.physics_height_field_raw
 
     def _selected_ladder_bars_terrain(self,
                                       bar_mesh_file,
@@ -110,19 +119,6 @@ class Terrain:
         vertex_offset = 0
         self.rough_probability = float(np.clip(rough_probability, 0.0, 1.0))
 
-        # Add one ground mesh for the full terrain grid. The ladder mesh is
-        # tiled per environment, but the flat floor does not need duplicates.
-        ground_vertices = []
-        ground_triangles = []
-        _append_ground_mesh(
-            ground_vertices,
-            ground_triangles,
-            env_length=self.tot_rows * self.cfg.horizontal_scale,
-            env_width=self.tot_cols * self.cfg.horizontal_scale)
-        all_vertices.append(np.asarray(ground_vertices, dtype=np.float32))
-        all_triangles.append(np.asarray(ground_triangles, dtype=np.uint32))
-        vertex_offset += 4
-
         for k in range(self.cfg.num_sub_terrains):
             (i, j) = np.unravel_index(k, (self.cfg.num_rows, self.num_cols))
 
@@ -131,21 +127,17 @@ class Terrain:
 
             if is_rough:
                 self.ladder_angles[i, j] = 0.0
-                # Keep the rough row flat while preserving its target/platform bookkeeping.
-                # local_vertices, local_triangles, local_height_field, platform_center = generate_random_rough_mesh(
-                #     env_length=self.env_length,
-                #     env_width=self.env_width,
-                #     horizontal_scale=self.cfg.horizontal_scale,
-                #     vertical_scale=self.cfg.vertical_scale,
-                #     difficulty=difficulty,
-                #     rough_height_range=rough_height_range,
-                #     rough_grid_size=rough_grid_size)
+                local_physics_height_field, local_height_field, platform_center = generate_random_rough_height_fields(
+                    env_length=self.env_length,
+                    env_width=self.env_width,
+                    physics_horizontal_scale=self.cfg.horizontal_scale,
+                    obs_horizontal_scale=self.obs_horizontal_scale,
+                    vertical_scale=self.cfg.vertical_scale,
+                    difficulty=difficulty,
+                    rough_height_range=rough_height_range,
+                    rough_grid_size=rough_grid_size)
                 local_vertices = np.zeros((0, 3), dtype=np.float32)
                 local_triangles = np.zeros((0, 3), dtype=np.uint32)
-                local_height_field = np.zeros(
-                    (self.length_per_env_pixels, self.width_per_env_pixels),
-                    dtype=np.int16)
-                platform_center = np.asarray([self.env_length * 0.85, self.env_width * 0.5, 0.0], dtype=np.float32)
             else:
                 row_difficulty = ((i - 1) / (self.cfg.num_rows - 2)
                                   if self.cfg.curriculum and self.cfg.num_rows > 2
@@ -172,21 +164,29 @@ class Terrain:
                 # Height scan is intentionally simple: inside a bar/platform XY
                 # range means returning the bar center/platform top height.
                 local_height_field = rasterize_ladder_bars(
-                    horizontal_scale=self.cfg.horizontal_scale,
+                    horizontal_scale=self.obs_horizontal_scale,
                     vertical_scale=self.cfg.vertical_scale,
-                    num_rows=self.length_per_env_pixels,
-                    num_cols=self.width_per_env_pixels,
+                    num_rows=self.obs_length_per_env_pixels,
+                    num_cols=self.obs_width_per_env_pixels,
                     bar_centers=bar_centers,
                     bar_vertices=prepared_bar_vertices,
                     platform_length=platform_length,
                     platform_width=platform_width,
                     platform_gap=platform_gap)
+                local_physics_height_field = np.zeros(
+                    (self.length_per_env_pixels, self.width_per_env_pixels),
+                    dtype=np.int16)
 
             start_x = self.border + i * self.length_per_env_pixels
             start_y = self.border + j * self.width_per_env_pixels
+            obs_start_x = self.obs_border + i * self.obs_length_per_env_pixels
+            obs_start_y = self.obs_border + j * self.obs_width_per_env_pixels
             self.height_field_raw[
+                obs_start_x:obs_start_x + self.obs_length_per_env_pixels,
+                obs_start_y:obs_start_y + self.obs_width_per_env_pixels] = local_height_field
+            self.physics_height_field_raw[
                 start_x:start_x + self.length_per_env_pixels,
-                start_y:start_y + self.width_per_env_pixels] = local_height_field
+                start_y:start_y + self.width_per_env_pixels] = local_physics_height_field
 
             env_origin_x = (i + 0.5) * self.env_length
             env_origin_y = (j + 0.5) * self.env_width
@@ -307,6 +307,46 @@ def generate_ladder_bar_mesh(env_length,
     ], dtype=np.float32)
 
     return bar_centers, prepared_bar_vertices, np.asarray(vertices, dtype=np.float32), np.asarray(triangles, dtype=np.uint32), platform_center
+
+
+def generate_random_rough_height_fields(env_length,
+                                        env_width,
+                                        physics_horizontal_scale,
+                                        obs_horizontal_scale,
+                                        vertical_scale,
+                                        difficulty,
+                                        rough_height_range=(0.02, 0.08),
+                                        rough_grid_size=0.1):
+    rough_grid_size = max(float(rough_grid_size), min(physics_horizontal_scale, obs_horizontal_scale))
+    grid_rows = max(2, int(np.ceil(env_length / rough_grid_size)) + 1)
+    grid_cols = max(2, int(np.ceil(env_width / rough_grid_size)) + 1)
+
+    if np.isscalar(rough_height_range):
+        min_height = 0.0
+        max_height = float(rough_height_range)
+    else:
+        min_height = float(min(rough_height_range))
+        max_height = float(max(rough_height_range))
+
+    height_grid = np.random.uniform(min_height, max_height, size=(grid_rows, grid_cols))
+    height_grid = np.round(height_grid / vertical_scale).astype(np.int16)
+
+    physics_height_field = _rasterize_rough_height_grid(
+        height_grid=height_grid,
+        num_rows=int(env_length / physics_horizontal_scale),
+        num_cols=int(env_width / physics_horizontal_scale),
+        env_length=env_length,
+        env_width=env_width,
+        horizontal_scale=physics_horizontal_scale)
+    obs_height_field = _rasterize_rough_height_grid(
+        height_grid=height_grid,
+        num_rows=int(env_length / obs_horizontal_scale),
+        num_cols=int(env_width / obs_horizontal_scale),
+        env_length=env_length,
+        env_width=env_width,
+        horizontal_scale=obs_horizontal_scale)
+    platform_center = np.asarray([env_length * 0.85, env_width * 0.5, 0.0], dtype=np.float32)
+    return physics_height_field, obs_height_field, platform_center
 
 
 def generate_random_rough_mesh(env_length,

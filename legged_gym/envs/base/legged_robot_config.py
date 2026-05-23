@@ -42,7 +42,8 @@ class LeggedRobotCfg(BaseConfig):
 
     class terrain:
         mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
-        horizontal_scale = 0.01 # [m]
+        horizontal_scale = 0.1 # [m]
+        obs_horizontal_scale = 0.01 # [m], height observation map resolution
         vertical_scale = 0.005 # [m]
         border_size = 25 # [m]
         curriculum = True
@@ -68,7 +69,7 @@ class LeggedRobotCfg(BaseConfig):
             "platform_gap": 0.1,
             "ladder_x_offset": -1.0,
             "rough_probability": 0.3,
-            "rough_height_range": (0, 0.02),
+            "rough_height_range": (-0.04, 0),
             "rough_grid_size": 0.1,
         }
         max_init_terrain_level = 5 # starting curriculum state

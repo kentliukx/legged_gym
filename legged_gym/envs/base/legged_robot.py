@@ -265,6 +265,7 @@ class LeggedRobot(BaseTask):
         elif mesh_type=='heightfield':
             self._create_heightfield()
         elif mesh_type=='trimesh':
+            self._create_heightfield()
             self._create_trimesh()
         elif mesh_type is not None:
             raise ValueError("Terrain mesh type not recognised. Allowed types are [None, plane, heightfield, trimesh]")
@@ -735,12 +736,19 @@ class LeggedRobot(BaseTask):
         hf_params.dynamic_friction = self.cfg.terrain.dynamic_friction
         hf_params.restitution = self.cfg.terrain.restitution
 
-        self.gym.add_heightfield(self.sim, self.terrain.heightsamples, hf_params)
-        self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.tot_rows, self.terrain.tot_cols).to(self.device)
+        height_samples = np.asarray(
+            getattr(self.terrain, "physics_heightsamples", self.terrain.heightsamples),
+            dtype=np.int16,
+        ).flatten(order='F')
+        self.gym.add_heightfield(self.sim, height_samples, hf_params)
+        self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.obs_tot_rows, self.terrain.obs_tot_cols).to(self.device)
 
     def _create_trimesh(self):
         """ Adds a triangle mesh terrain to the simulation, sets parameters based on the cfg.
         # """
+        if self.terrain.vertices.shape[0] == 0 or self.terrain.triangles.shape[0] == 0:
+            return
+
         tm_params = gymapi.TriangleMeshParams()
         tm_params.nb_vertices = self.terrain.vertices.shape[0]
         tm_params.nb_triangles = self.terrain.triangles.shape[0]
@@ -752,7 +760,7 @@ class LeggedRobot(BaseTask):
         tm_params.dynamic_friction = self.cfg.terrain.dynamic_friction
         tm_params.restitution = self.cfg.terrain.restitution
         self.gym.add_triangle_mesh(self.sim, self.terrain.vertices.flatten(order='C'), self.terrain.triangles.flatten(order='C'), tm_params)   
-        self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.tot_rows, self.terrain.tot_cols).to(self.device)
+        self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.obs_tot_rows, self.terrain.obs_tot_cols).to(self.device)
 
     def _create_envs(self):
         """ Creates environments:
@@ -999,7 +1007,7 @@ class LeggedRobot(BaseTask):
             points = quat_apply_yaw(self.base_quat.repeat(1, self.num_height_points), self.height_points) + (self.root_states[:, :3]).unsqueeze(1)
 
         points += self.terrain.cfg.border_size
-        points = (points/self.terrain.cfg.horizontal_scale).long()
+        points = (points/self.terrain.obs_horizontal_scale).long()
         px = points[:, :, 0].view(-1)
         py = points[:, :, 1].view(-1)
         px = torch.clip(px, 0, self.height_samples.shape[0]-2)
