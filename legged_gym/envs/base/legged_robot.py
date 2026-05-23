@@ -177,7 +177,7 @@ class LeggedRobot(BaseTask):
 
         self._resample_commands(env_ids)
         if hasattr(self, "goal_targets"):
-            self.min_goal_dist[env_ids] = self.goal_dist[env_ids]
+            self._reset_goal_progress(env_ids)
 
         # reset buffers
         self.last_actions[env_ids] = 0.
@@ -375,12 +375,26 @@ class LeggedRobot(BaseTask):
             return
 
         rel_world = self.goal_targets[env_ids, :3] - self.root_states[env_ids, :3]
-        rel_base = quat_rotate_inverse(self.base_quat[env_ids], rel_world)
+        base_yaw_inv = self.base_quat[env_ids].clone()
+        base_yaw_inv[:, :3] *= -1
+        rel_yaw = quat_apply_yaw(base_yaw_inv, rel_world)
         self.commands[env_ids] = 0.
-        self.commands[env_ids, :2] = rel_base[:, :2]
-        self.goal_dist[env_ids] = torch.norm(rel_base[:, :2], dim=1)
+        self.commands[env_ids, :2] = rel_yaw[:, :2]
+        self.goal_dist[env_ids] = torch.norm(rel_world[:, :2], dim=1)
         self.reached_goal[env_ids, 0] = (self.goal_dist[env_ids] < self.cfg.rewards.goal_radius).float()
         self.ladder_progress[env_ids] = self._get_ladder_progress(env_ids)
+
+    def _reset_goal_progress(self, env_ids=None):
+        if not hasattr(self, "goal_targets"):
+            return
+
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+        if len(env_ids) == 0:
+            return
+
+        self._update_platform_commands(env_ids)
+        self.min_goal_dist[env_ids] = self.goal_dist[env_ids]
 
     def _get_ladder_progress(self, env_ids=None):
         if not hasattr(self, "goal_targets"):
@@ -641,8 +655,7 @@ class LeggedRobot(BaseTask):
             self.terrain_ladder_angles = torch.from_numpy(self.terrain.ladder_angles).to(self.device).to(torch.float)
             self.goal_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
             self._randomize_rough_targets(torch.arange(self.num_envs, device=self.device))
-            self._update_platform_commands(torch.arange(self.num_envs, device=self.device))
-            self.min_goal_dist[:] = self.goal_dist
+            self._reset_goal_progress(torch.arange(self.num_envs, device=self.device))
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
