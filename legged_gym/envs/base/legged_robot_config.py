@@ -219,7 +219,7 @@ class LeggedRobotCfg(BaseConfig):
 
     class sim:
         dt =  0.005
-        substeps = 4
+        substeps = 1
         gravity = [0., 0. ,-9.81]  # [m/s^2]
         up_axis = 1  # 0 is y, 1 is z
 
@@ -229,7 +229,7 @@ class LeggedRobotCfg(BaseConfig):
             num_position_iterations = 4
             num_velocity_iterations = 0
             contact_offset = 0.01  # [m]
-            rest_offset = 0.001   # [m]
+            rest_offset = 0   # [m]
             bounce_threshold_velocity = 0.5 #0.5 [m/s]
             max_depenetration_velocity = 10.0
             max_gpu_contact_pairs = 2**24 #2**24 -> needed for 8000 envs and more
@@ -254,7 +254,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.01
+        entropy_coef = 0.005
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-3 #5.e-4

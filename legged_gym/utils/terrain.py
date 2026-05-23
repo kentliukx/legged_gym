@@ -131,14 +131,21 @@ class Terrain:
 
             if is_rough:
                 self.ladder_angles[i, j] = 0.0
-                local_vertices, local_triangles, local_height_field, platform_center = generate_random_rough_mesh(
-                    env_length=self.env_length,
-                    env_width=self.env_width,
-                    horizontal_scale=self.cfg.horizontal_scale,
-                    vertical_scale=self.cfg.vertical_scale,
-                    difficulty=difficulty,
-                    rough_height_range=rough_height_range,
-                    rough_grid_size=rough_grid_size)
+                # Keep the rough row flat while preserving its target/platform bookkeeping.
+                # local_vertices, local_triangles, local_height_field, platform_center = generate_random_rough_mesh(
+                #     env_length=self.env_length,
+                #     env_width=self.env_width,
+                #     horizontal_scale=self.cfg.horizontal_scale,
+                #     vertical_scale=self.cfg.vertical_scale,
+                #     difficulty=difficulty,
+                #     rough_height_range=rough_height_range,
+                #     rough_grid_size=rough_grid_size)
+                local_vertices = np.zeros((0, 3), dtype=np.float32)
+                local_triangles = np.zeros((0, 3), dtype=np.uint32)
+                local_height_field = np.zeros(
+                    (self.length_per_env_pixels, self.width_per_env_pixels),
+                    dtype=np.int16)
+                platform_center = np.asarray([self.env_length * 0.85, self.env_width * 0.5, 0.0], dtype=np.float32)
             else:
                 row_difficulty = ((i - 1) / (self.cfg.num_rows - 2)
                                   if self.cfg.curriculum and self.cfg.num_rows > 2
