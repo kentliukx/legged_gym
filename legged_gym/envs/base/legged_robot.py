@@ -1112,7 +1112,9 @@ class LeggedRobot(BaseTask):
         speed_over = torch.clamp(velocity_norm - self.cfg.rewards.goal_speed_limit, min=0.)
         min_dist_decrease_speed = torch.clamp(self.min_goal_dist - goal_dist, min=0.) / self.dt
         self.min_goal_dist[:] = torch.minimum(self.min_goal_dist, goal_dist)
-        progress_reward = min_dist_decrease_speed * goal_dir[:, 0]
+        heading_error = torch.atan2(goal_dir[:, 1], goal_dir[:, 0])
+        heading_gate = torch.clamp(torch.cos(3. * heading_error), min=0.)
+        progress_reward = min_dist_decrease_speed * heading_gate
         return (1. - goal_reached) * (progress_reward - 5. * speed_over) + 1.5 * goal_reached
 
     def _reward_heading_tracking(self):
