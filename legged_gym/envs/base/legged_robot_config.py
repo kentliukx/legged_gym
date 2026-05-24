@@ -107,9 +107,10 @@ class LeggedRobotCfg(BaseConfig):
         stiffness = {'joint_a': 10.0, 'joint_b': 15.}  # [N*m/rad]
         damping = {'joint_a': 1.0, 'joint_b': 1.5}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
-        action_scale = 0.5
+        action_scale = 1
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
+        use_actuator_network = False
 
     class asset:
         file = ""
@@ -199,7 +200,7 @@ class LeggedRobotCfg(BaseConfig):
             dof_vel = 0.05
             height_measurements = 1.0
         clip_observations = 100.
-        clip_actions = 100.
+        clip_actions = 10.
 
     class noise:
         add_noise = True
