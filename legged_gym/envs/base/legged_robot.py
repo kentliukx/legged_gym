@@ -1109,11 +1109,11 @@ class LeggedRobot(BaseTask):
         goal_dir = self.commands[:, :2] / goal_dist.unsqueeze(1).clamp(min=1e-6)
         velocity_xy = self.base_lin_vel[:, :2]
         velocity_norm = torch.norm(velocity_xy, dim=1).clamp(min=1e-6)
-        velocity_goal_cos = torch.sum(velocity_xy * goal_dir, dim=1) / velocity_norm
         speed_over = torch.clamp(velocity_norm - self.cfg.rewards.goal_speed_limit, min=0.)
         min_dist_decrease_speed = torch.clamp(self.min_goal_dist - goal_dist, min=0.) / self.dt
         self.min_goal_dist[:] = torch.minimum(self.min_goal_dist, goal_dist)
-        return (1. - goal_reached) * ((min_dist_decrease_speed - torch.square(speed_over)) * velocity_goal_cos ) + 1.5 * goal_reached
+        progress_reward = min_dist_decrease_speed * goal_dir[:, 0]
+        return (1. - goal_reached) * (progress_reward - 5. * speed_over) + 1.5 * goal_reached
 
     def _reward_heading_tracking(self):
         _, goal_dist = self._get_goal_delta()
