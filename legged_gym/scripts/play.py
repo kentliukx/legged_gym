@@ -46,11 +46,12 @@ def play(args):
 
     env_cfg.terrain.num_cols = 1
     env_cfg.env.num_envs = 1
+    env_cfg.terrain.border_size = 5
     env_cfg.terrain.curriculum = True
     env_cfg.noise.add_noise = False
     env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.push_robots = False
-    env_cfg.sim.physx.max_gpu_contact_pairs = 2**23
+    env_cfg.sim.physx.max_gpu_contact_pairs = 2**20
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
