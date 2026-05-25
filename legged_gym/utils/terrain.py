@@ -104,6 +104,7 @@ class Terrain:
                                       bar_count=10,
                                       ladder_angle=0.0,
                                       bar_x_scale=(3.0, 1.0),
+                                      bar_x_scale_min_level=None,
                                       platform_length=1.0,
                                       platform_width=1.2,
                                       platform_gap=0.1,
@@ -148,10 +149,13 @@ class Terrain:
                     env_length=self.env_length,
                     env_width=self.env_width,
                     difficulty=row_difficulty,
+                    ladder_level=i,
+                    max_ladder_level=self.cfg.num_rows - 1,
                     bar_spacing=tile_bar_spacing,
                     bar_count=bar_count,
                     ladder_angle=tile_ladder_angle,
                     bar_x_scale=bar_x_scale,
+                    bar_x_scale_min_level=bar_x_scale_min_level,
                     platform_length=platform_length,
                     platform_width=platform_width,
                     platform_gap=platform_gap,
@@ -260,10 +264,13 @@ def rasterize_ladder_bars(horizontal_scale,
 def generate_ladder_bar_mesh(env_length,
                              env_width,
                              difficulty,
+                             ladder_level,
+                             max_ladder_level,
                              bar_spacing=0.3,
                              bar_count=10,
                              ladder_angle=0.0,
                              bar_x_scale=(3.0, 1.0),
+                             bar_x_scale_min_level=None,
                              platform_length=1.0,
                              platform_width=1.2,
                              platform_gap=0.1,
@@ -278,7 +285,12 @@ def generate_ladder_bar_mesh(env_length,
     bar_spacing = _lerp_range(bar_spacing, difficulty)
     bar_count = int(round(_lerp_range(bar_count, difficulty)))
     ladder_angle = _lerp_range(ladder_angle, difficulty)
-    bar_x_scale = _lerp_range(bar_x_scale, difficulty)
+    bar_x_scale = _lerp_range_by_level(
+        bar_x_scale,
+        ladder_level=ladder_level,
+        max_ladder_level=max_ladder_level,
+        min_value_level=bar_x_scale_min_level,
+    )
 
     vertices = []
     triangles = []
@@ -560,6 +572,23 @@ def _lerp_range(value_range, difficulty):
     if len(value_range) != 2:
         raise ValueError("range values must be scalars or two-element sequences")
     return float(value_range[0] + (value_range[1] - value_range[0]) * difficulty)
+
+
+def _lerp_range_by_level(value_range, ladder_level, max_ladder_level, min_value_level=None):
+    if np.isscalar(value_range):
+        return float(value_range)
+    if len(value_range) != 2:
+        raise ValueError("range values must be scalars or two-element sequences")
+
+    ladder_level = int(ladder_level)
+    max_ladder_level = max(1, int(max_ladder_level))
+    if min_value_level is None:
+        effective_difficulty = float(ladder_level - 1) / max(1, max_ladder_level - 1)
+    else:
+        min_value_level = max(1, min(int(min_value_level), max_ladder_level))
+        effective_difficulty = float(ladder_level - 1) / max(1, min_value_level - 1)
+        effective_difficulty = min(effective_difficulty, 1.0)
+    return float(value_range[0] + (value_range[1] - value_range[0]) * effective_difficulty)
 
 
 def _sample_range(value_range):
