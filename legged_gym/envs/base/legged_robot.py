@@ -265,7 +265,6 @@ class LeggedRobot(BaseTask):
         elif mesh_type=='heightfield':
             self._create_heightfield()
         elif mesh_type=='trimesh':
-            self._create_heightfield()
             self._create_trimesh()
         elif mesh_type is not None:
             raise ValueError("Terrain mesh type not recognised. Allowed types are [None, plane, heightfield, trimesh]")

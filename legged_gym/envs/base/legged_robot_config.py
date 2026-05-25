@@ -63,7 +63,7 @@ class LeggedRobotCfg(BaseConfig):
             "bar_spacing": (0.15, 0.25),
             "bar_count": (10, 14),
             "ladder_angle": (10, 90),
-            "bar_x_scale": (1.0, 1.0),
+            "bar_x_scale": (3.0, 1.0),
             "platform_length": 2,
             "platform_width": 2,
             "platform_gap": 0.1,
@@ -76,7 +76,7 @@ class LeggedRobotCfg(BaseConfig):
         terrain_length = 8.
         terrain_width = 8.
         num_rows= 10 # number of terrain rows (levels)
-        num_cols = 20 # number of terrain cols (types)
+        num_cols = 50 # number of terrain cols (types)
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
 

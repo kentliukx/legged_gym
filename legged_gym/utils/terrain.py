@@ -127,15 +127,13 @@ class Terrain:
 
             if is_rough:
                 self.ladder_angles[i, j] = 0.0
-                local_physics_height_field, local_height_field, platform_center = generate_random_rough_height_fields(
-                    env_length=self.env_length,
-                    env_width=self.env_width,
-                    physics_horizontal_scale=self.cfg.horizontal_scale,
-                    obs_horizontal_scale=self.obs_horizontal_scale,
-                    vertical_scale=self.cfg.vertical_scale,
-                    difficulty=difficulty,
-                    rough_height_range=rough_height_range,
-                    rough_grid_size=rough_grid_size)
+                local_physics_height_field = np.zeros(
+                    (self.length_per_env_pixels, self.width_per_env_pixels),
+                    dtype=np.int16)
+                local_height_field = np.zeros(
+                    (self.obs_length_per_env_pixels, self.obs_width_per_env_pixels),
+                    dtype=np.int16)
+                platform_center = np.asarray([self.env_length * 0.85, self.env_width * 0.5, 0.0], dtype=np.float32)
                 local_vertices = np.zeros((0, 3), dtype=np.float32)
                 local_triangles = np.zeros((0, 3), dtype=np.uint32)
             else:
@@ -176,6 +174,16 @@ class Terrain:
                 local_physics_height_field = np.zeros(
                     (self.length_per_env_pixels, self.width_per_env_pixels),
                     dtype=np.int16)
+
+            ground_vertices, ground_triangles = make_ground_mesh(self.env_length, self.env_width)
+            if local_vertices.shape[0] == 0:
+                local_vertices = ground_vertices
+                local_triangles = ground_triangles
+            else:
+                local_triangles = np.concatenate(
+                    (ground_triangles, local_triangles + ground_vertices.shape[0]),
+                    axis=0)
+                local_vertices = np.concatenate((ground_vertices, local_vertices), axis=0)
 
             start_x = self.border + i * self.length_per_env_pixels
             start_y = self.border + j * self.width_per_env_pixels
@@ -450,6 +458,13 @@ def _append_ground_mesh(vertices, triangles, env_length, env_width, z=0.0):
         [base_idx + 0, base_idx + 1, base_idx + 2],
         [base_idx + 0, base_idx + 2, base_idx + 3],
     ])
+
+
+def make_ground_mesh(env_length, env_width, z=0.0):
+    vertices = []
+    triangles = []
+    _append_ground_mesh(vertices, triangles, env_length, env_width, z=z)
+    return np.asarray(vertices, dtype=np.float32), np.asarray(triangles, dtype=np.uint32)
 
 
 def _append_platform_mesh(vertices, triangles, bar_centers, platform_length, platform_width, platform_gap):
