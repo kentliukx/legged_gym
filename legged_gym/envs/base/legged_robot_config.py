@@ -48,6 +48,8 @@ class LeggedRobotCfg(BaseConfig):
         vertical_scale = 0.005 # [m]
         border_size = 25 # [m]
         curriculum = True
+        curriculum_move_up_ratio = 0.9
+        curriculum_move_down_ratio = 0.5
         static_friction = 1.0
         dynamic_friction = 1.0
         restitution = 0.
@@ -63,7 +65,7 @@ class LeggedRobotCfg(BaseConfig):
             "bar_mesh_file": "{LEGGED_GYM_ROOT_DIR}/resources/terrains/round_bar.STL",
             "bar_spacing": (0.15, 0.25),
             "bar_count": (10, 14),
-            "ladder_angle": (10, 90),
+            "ladder_angle": (10, 80),
             "bar_x_scale": (3.0, 1.0),
             "bar_x_scale_min_level": 5,
             "platform_length": 2,

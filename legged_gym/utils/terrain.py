@@ -68,6 +68,7 @@ class Terrain:
         self.num_cols = cfg.num_cols
         self.cfg.num_sub_terrains = cfg.num_rows * self.num_cols
         self.env_origins = np.zeros((cfg.num_rows, self.num_cols, 3))
+        self.ladder_origins = np.zeros((cfg.num_rows, self.num_cols, 3), dtype=np.float32)
         self.platform_centers = np.zeros((cfg.num_rows, self.num_cols, 3), dtype=np.float32)
         self.ladder_mask = np.ones((cfg.num_rows, self.num_cols), dtype=np.bool_)
         self.ladder_bar_spacing = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
@@ -135,6 +136,7 @@ class Terrain:
                     (self.obs_length_per_env_pixels, self.obs_width_per_env_pixels),
                     dtype=np.int16)
                 platform_center = np.asarray([self.env_length * 0.85, self.env_width * 0.5, 0.0], dtype=np.float32)
+                ladder_origin = np.asarray([self.env_length * 0.5, self.env_width * 0.5, 0.0], dtype=np.float32)
                 local_vertices = np.zeros((0, 3), dtype=np.float32)
                 local_triangles = np.zeros((0, 3), dtype=np.uint32)
             else:
@@ -162,6 +164,10 @@ class Terrain:
                     x_offset=ladder_x_offset,
                     bar_vertices=bar_vertices,
                     bar_triangles=bar_triangles)
+                ladder_origin = np.asarray(
+                    [self.env_length * 0.5 + ladder_x_offset, self.env_width * 0.5, 0.0],
+                    dtype=np.float32,
+                )
 
                 # Height scan is intentionally simple: inside a bar/platform XY
                 # range means returning the bar center/platform top height.
@@ -208,6 +214,11 @@ class Terrain:
                 platform_center[0] + start_x * self.cfg.horizontal_scale - self.cfg.border_size,
                 platform_center[1] + start_y * self.cfg.horizontal_scale - self.cfg.border_size,
                 platform_center[2],
+            ]
+            self.ladder_origins[i, j] = [
+                ladder_origin[0] + start_x * self.cfg.horizontal_scale - self.cfg.border_size,
+                ladder_origin[1] + start_y * self.cfg.horizontal_scale - self.cfg.border_size,
+                ladder_origin[2],
             ]
 
             # Move the local ladder tile into its global terrain-grid position.

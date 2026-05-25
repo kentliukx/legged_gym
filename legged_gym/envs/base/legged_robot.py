@@ -167,6 +167,7 @@ class LeggedRobot(BaseTask):
             self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
             if hasattr(self, "terrain_platform_centers"):
                 self.goal_targets[env_ids] = self.terrain_platform_centers[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+                self.goal_targets[env_ids, 2] += self.cfg.rewards.base_height_target
                 self._randomize_rough_targets(env_ids)
         # avoid updating command curriculum at each step since the maximum command is common to all envs
         if self.cfg.commands.curriculum and (self.common_step_counter % self.max_episode_length==0):
@@ -442,7 +443,7 @@ class LeggedRobot(BaseTask):
         rel_yaw = quat_apply_yaw(base_yaw_inv, rel_world)
         self.commands[env_ids] = 0.
         self.commands[env_ids, :2] = rel_yaw[:, :2]
-        self.goal_dist[env_ids] = torch.norm(rel_world[:, :2], dim=1)
+        self.goal_dist[env_ids] = torch.norm(rel_world, dim=1)
         self.reached_goal[env_ids, 0] = (self.goal_dist[env_ids] < self.cfg.rewards.goal_radius).float()
         self.ladder_progress[env_ids] = self._get_ladder_progress(env_ids)
 
@@ -467,8 +468,12 @@ class LeggedRobot(BaseTask):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
 
-        target_vec = self.goal_targets[env_ids, :2] - self.env_origins[env_ids, :2]
-        robot_vec = self.root_states[env_ids, :2] - self.env_origins[env_ids, :2]
+        if self.cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
+            progress_origins = self.terrain_ladder_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+        else:
+            progress_origins = self.env_origins[env_ids, :3]
+        target_vec = self.goal_targets[env_ids, :3] - progress_origins
+        robot_vec = self.root_states[env_ids, :3] - progress_origins
         target_dist = torch.norm(target_vec, dim=1).clamp(min=1e-6)
         progress = torch.sum(robot_vec * target_vec, dim=1) / torch.square(target_dist)
         return torch.clamp(progress, 0.0, 1.0)
@@ -554,15 +559,21 @@ class LeggedRobot(BaseTask):
         current_is_ladder = torch.ones(len(env_ids), dtype=torch.bool, device=self.device)
         if hasattr(self, "terrain_ladder_mask"):
             current_is_ladder = self.terrain_ladder_mask[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
-        distance = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
+        if self.cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
+            progress_origins = self.terrain_ladder_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+        else:
+            progress_origins = self.env_origins[env_ids, :3]
+        distance = torch.norm(self.root_states[env_ids, :3] - progress_origins, dim=1)
         if hasattr(self, "goal_targets"):
-            target_vec = self.goal_targets[env_ids, :2] - self.env_origins[env_ids, :2]
-            robot_vec = self.root_states[env_ids, :2] - self.env_origins[env_ids, :2]
+            target_vec = self.goal_targets[env_ids, :3] - progress_origins
+            robot_vec = self.root_states[env_ids, :3] - progress_origins
             nominal_distance = torch.norm(target_vec, dim=1).clamp(min=1e-6)
             progress = torch.sum(robot_vec * target_vec, dim=1) / nominal_distance
-            goal_dist = torch.norm(self.root_states[env_ids, :2] - self.goal_targets[env_ids, :2], dim=1)
-            move_up = (goal_dist < self.cfg.rewards.goal_radius) | (progress > nominal_distance * 0.9)
-            move_down = (progress < nominal_distance * 0.5) & ~move_up
+            goal_dist = torch.norm(self.root_states[env_ids, :3] - self.goal_targets[env_ids, :3], dim=1)
+            move_up_ratio = float(self.cfg.terrain.curriculum_move_up_ratio)
+            move_down_ratio = float(self.cfg.terrain.curriculum_move_down_ratio)
+            move_up = (goal_dist < self.cfg.rewards.goal_radius) | (progress > nominal_distance * move_up_ratio)
+            move_down = (progress < nominal_distance * move_down_ratio) & ~move_up
         else:
             # robots that walked far enough progress to harder terains
             move_up = distance > self.terrain.env_length / 2
@@ -579,6 +590,7 @@ class LeggedRobot(BaseTask):
         self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
         if hasattr(self, "terrain_platform_centers"):
             self.goal_targets[env_ids] = self.terrain_platform_centers[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+            self.goal_targets[env_ids, 2] += self.cfg.rewards.base_height_target
             self._randomize_rough_targets(env_ids)
     
     def update_command_curriculum(self, env_ids):
@@ -716,11 +728,13 @@ class LeggedRobot(BaseTask):
         self.reached_goal = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
         self.ladder_progress = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         if self.cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
+            self.terrain_ladder_origins = torch.from_numpy(self.terrain.ladder_origins).to(self.device).to(torch.float)
             self.terrain_platform_centers = torch.from_numpy(self.terrain.platform_centers).to(self.device).to(torch.float)
             self.terrain_ladder_mask = torch.from_numpy(self.terrain.ladder_mask).to(self.device)
             self.terrain_ladder_bar_spacing = torch.from_numpy(self.terrain.ladder_bar_spacing).to(self.device).to(torch.float)
             self.terrain_ladder_angles = torch.from_numpy(self.terrain.ladder_angles).to(self.device).to(torch.float)
             self.goal_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
+            self.goal_targets[:, 2] += self.cfg.rewards.base_height_target
             self._randomize_rough_targets(torch.arange(self.num_envs, device=self.device))
             self._reset_goal_progress(torch.arange(self.num_envs, device=self.device))
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
@@ -995,7 +1009,7 @@ class LeggedRobot(BaseTask):
         target_distance = min_distance + torch.rand(len(rough_env_ids), device=self.device) * (max_distance - min_distance)
         target_offsets = direction * target_distance.unsqueeze(1)
         self.goal_targets[rough_env_ids, :2] = self.env_origins[rough_env_ids, :2] + target_offsets
-        self.goal_targets[rough_env_ids, 2] = 0.0
+        self.goal_targets[rough_env_ids, 2] = self.cfg.rewards.base_height_target
 
     def _parse_cfg(self, cfg):
         self.dt = self.cfg.control.decimation * self.sim_params.dt
