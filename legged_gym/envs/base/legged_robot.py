@@ -157,12 +157,13 @@ class LeggedRobot(BaseTask):
         """
         if len(env_ids) == 0:
             return
+        self._debug_log_reset_event(env_ids)
         episode_ladder_progress = self._get_ladder_progress(env_ids).mean()
         # update curriculum
         if self.cfg.terrain.curriculum:
             self._update_terrain_curriculum(env_ids)
         elif self.custom_origins and hasattr(self, "terrain_origins"):
-            self._sample_terrain_levels_and_types(env_ids, randomize_ladder_level=True)
+            self._sample_terrain_levels_and_types(env_ids)
             self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
             if hasattr(self, "terrain_platform_centers"):
                 self.goal_targets[env_ids] = self.terrain_platform_centers[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
@@ -193,13 +194,74 @@ class LeggedRobot(BaseTask):
             self.episode_sums[key][env_ids] = 0.
         # log additional curriculum info
         if self.cfg.terrain.curriculum:
-            self.extras["episode"]["terrain_level"] = torch.mean(self.terrain_levels.float())
+            self.extras["episode"]["terrain_level"] = torch.mean(self.ladder_levels[env_ids].float())
             self.extras["episode"]["ladder_progress"] = episode_ladder_progress
         if self.cfg.commands.curriculum:
             self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf
+
+    def _debug_terrain_sampling_enabled(self):
+        return bool(getattr(self.cfg.env, "debug_terrain_sampling", False))
+
+    def _debug_log_reset_event(self, env_ids):
+        if not self._debug_terrain_sampling_enabled():
+            return
+        if not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
+        if len(env_ids) == 0:
+            return
+
+        terrain_kinds = []
+        for env_id in env_ids.tolist():
+            is_ladder = True
+            if hasattr(self, "terrain_ladder_mask"):
+                is_ladder = bool(self.terrain_ladder_mask[self.terrain_levels[env_id], self.terrain_types[env_id]].item())
+            terrain_kinds.append("ladder" if is_ladder else "rough")
+
+        print(
+            f"[terrain-debug] reset step={self._debug_step_label()} "
+            f"env_ids={env_ids.tolist()} "
+            f"prev_terrain={terrain_kinds} "
+            f"saved_ladder_levels={self.ladder_levels[env_ids].tolist()} "
+            f"time_outs={self.time_out_buf[env_ids].tolist()} "
+            f"reached_goal={self.reached_goal[env_ids, 0].tolist()}",
+            flush=True,
+        )
+
+    def _debug_step_label(self):
+        if hasattr(self, "common_step_counter"):
+            return str(int(self.common_step_counter))
+        return "init"
+
+    def _debug_log_sampling_event(self, env_ids, event_name, rough_prob=None, rough_draws=None, use_rough=None):
+        if not self._debug_terrain_sampling_enabled():
+            return
+        if not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
+        if len(env_ids) == 0:
+            return
+
+        terrain_kinds = []
+        for env_id in env_ids.tolist():
+            is_ladder = True
+            if hasattr(self, "terrain_ladder_mask"):
+                is_ladder = bool(self.terrain_ladder_mask[self.terrain_levels[env_id], self.terrain_types[env_id]].item())
+            terrain_kinds.append("ladder" if is_ladder else "rough")
+
+        print(
+            f"[terrain-debug] {event_name} step={self._debug_step_label()} "
+            f"env_ids={env_ids.tolist()} "
+            f"sampled_terrain={terrain_kinds} "
+            f"terrain_levels={self.terrain_levels[env_ids].tolist()} "
+            f"saved_ladder_levels={self.ladder_levels[env_ids].tolist()} "
+            f"terrain_types={self.terrain_types[env_ids].tolist()} "
+            f"rough_prob={rough_prob if rough_prob is not None else 'n/a'} "
+            f"rough_draws={rough_draws if rough_draws is not None else 'n/a'} "
+            f"use_rough={use_rough if use_rough is not None else 'n/a'}",
+            flush=True,
+        )
     
     def compute_reward(self):
         """ Compute rewards
@@ -489,6 +551,9 @@ class LeggedRobot(BaseTask):
         if not self.init_done or self.common_step_counter == 0:
             # don't change on initial reset
             return
+        current_is_ladder = torch.ones(len(env_ids), dtype=torch.bool, device=self.device)
+        if hasattr(self, "terrain_ladder_mask"):
+            current_is_ladder = self.terrain_ladder_mask[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
         distance = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
         if hasattr(self, "goal_targets"):
             target_vec = self.goal_targets[env_ids, :2] - self.env_origins[env_ids, :2]
@@ -503,11 +568,13 @@ class LeggedRobot(BaseTask):
             move_up = distance > self.terrain.env_length / 2
             # robots that walked less than half of their required distance go to simpler terrains
             move_down = ~move_up
-        self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
+        move_up = move_up & current_is_ladder
+        move_down = move_down & current_is_ladder
+        self.ladder_levels[env_ids] += 1 * move_up - 1 * move_down
         # Robots that solve the last level are sent to a random one
-        self.terrain_levels[env_ids] = torch.where(self.terrain_levels[env_ids]>=self.max_terrain_level,
-                                                   torch.randint(1, self.max_terrain_level, (len(env_ids),), device=self.device),
-                                                   torch.clamp(self.terrain_levels[env_ids], min=1)) # (the minumum ladder level is one)
+        self.ladder_levels[env_ids] = torch.where(self.ladder_levels[env_ids]>=self.max_terrain_level,
+                                                  torch.randint(1, self.max_terrain_level, (len(env_ids),), device=self.device),
+                                                  torch.clamp(self.ladder_levels[env_ids], min=1)) # (the minimum ladder level is one)
         self._sample_terrain_levels_and_types(env_ids)
         self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
         if hasattr(self, "terrain_platform_centers"):
@@ -856,16 +923,15 @@ class LeggedRobot(BaseTask):
             self.custom_origins = True
             self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
             # put robots at the origins defined by the terrain
-            max_init_level = self.cfg.terrain.max_init_terrain_level
+            max_init_level = self.cfg.terrain.max_init_ladder_level
             if not self.cfg.terrain.curriculum:
                 max_init_level = self.cfg.terrain.num_rows - 1
             max_init_level = max(1, max_init_level)
-            self.terrain_levels = torch.randint(1, max_init_level+1, (self.num_envs,), device=self.device)
+            self.ladder_levels = torch.randint(1, max_init_level+1, (self.num_envs,), device=self.device)
+            self.terrain_levels = self.ladder_levels.clone()
             self.terrain_types = torch.randint(0, self.cfg.terrain.num_cols, (self.num_envs,), device=self.device)
             self.max_terrain_level = self.cfg.terrain.num_rows
-            self._sample_terrain_levels_and_types(
-                torch.arange(self.num_envs, device=self.device),
-                randomize_ladder_level=not self.cfg.terrain.curriculum)
+            self._sample_terrain_levels_and_types(torch.arange(self.num_envs, device=self.device))
             self.terrain_origins = torch.from_numpy(self.terrain.env_origins).to(self.device).to(torch.float)
             self.env_origins[:] = self.terrain_origins[self.terrain_levels, self.terrain_types]
         else:
@@ -880,7 +946,7 @@ class LeggedRobot(BaseTask):
             self.env_origins[:, 1] = spacing * yy.flatten()[:self.num_envs]
             self.env_origins[:, 2] = 0.
 
-    def _sample_terrain_levels_and_types(self, env_ids, randomize_ladder_level=False):
+    def _sample_terrain_levels_and_types(self, env_ids):
         if self.cfg.terrain.mesh_type not in ["heightfield", "trimesh"]:
             return
         if not isinstance(env_ids, torch.Tensor):
@@ -890,15 +956,21 @@ class LeggedRobot(BaseTask):
 
         terrain_num_cols = getattr(self.terrain, "num_cols", self.cfg.terrain.num_cols)
         rough_prob = getattr(self.terrain, "rough_probability", 0.0)
-        use_rough = torch.rand(len(env_ids), device=self.device) < rough_prob
+        rough_draws = torch.rand(len(env_ids), device=self.device)
+        use_rough = rough_draws < rough_prob
         self.terrain_types[env_ids] = torch.randint(0, terrain_num_cols, (len(env_ids),), device=self.device)
-        ladder_levels = self.terrain_levels[env_ids].clamp(min=1)
-        if randomize_ladder_level:
-            ladder_levels = torch.randint(1, self.max_terrain_level, (len(env_ids),), device=self.device)
+        ladder_levels = self.ladder_levels[env_ids].clamp(min=1)
         self.terrain_levels[env_ids] = torch.where(
             use_rough,
             torch.zeros(len(env_ids), dtype=torch.long, device=self.device),
             ladder_levels)
+        self._debug_log_sampling_event(
+            env_ids,
+            "resample",
+            rough_prob=float(rough_prob),
+            rough_draws=rough_draws.tolist(),
+            use_rough=use_rough.tolist(),
+        )
 
     def _randomize_rough_targets(self, env_ids):
         if not hasattr(self, "goal_targets") or not hasattr(self, "terrain_ladder_mask"):

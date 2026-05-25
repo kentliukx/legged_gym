@@ -46,6 +46,7 @@ def play(args):
 
     env_cfg.terrain.num_cols = 1
     env_cfg.env.num_envs = 1
+    env_cfg.env.debug_terrain_sampling = False
     env_cfg.terrain.border_size = 5
     env_cfg.terrain.curriculum = True
     env_cfg.noise.add_noise = False
