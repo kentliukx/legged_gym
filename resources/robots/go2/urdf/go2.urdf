@@ -127,7 +127,7 @@
     <visual>
       <origin rpy="0 -0.2 0" xyz="0.015 0 -0.1" />
       <geometry>
-        <cylinder length="0.05" radius="0.01" />
+        <cylinder length="0.04" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -136,7 +136,7 @@
     <collision>
       <origin rpy="0 -0.2 0" xyz="0.015 0 -0.1" />
       <geometry>
-        <cylinder length="0.05" radius="0.01" />
+        <cylinder length="0.04" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -151,7 +151,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.08" radius="0.01" />
+        <cylinder length="0.07" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -160,7 +160,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.08" radius="0.01" />
+        <cylinder length="0.07" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -174,7 +174,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -183,7 +183,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -197,7 +197,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -206,7 +206,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -220,7 +220,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -229,7 +229,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -243,7 +243,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.02" radius="0.01" />
+        <cylinder length="0.01" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -252,7 +252,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.02" radius="0.01" />
+        <cylinder length="0.01" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -263,10 +263,15 @@
     <axis xyz="0 0 0" />
   </joint>
   <link name="FL_foot">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.014137" />
+      <inertia ixx="1.272345e-06" ixy="0" ixz="0" iyy="1.272345e-06" iyz="0" izz="1.272345e-06" />
+    </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <sphere radius="0.02" />
+        <sphere radius="0.015" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -275,17 +280,22 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <sphere radius="0.02" />
+        <sphere radius="0.015" />
       </geometry>
     </collision>
   </link>
   <joint name="FL_foot_joint" type="fixed" dont_collapse="true">
-    <origin xyz="0.005 0 -0.02" rpy="0 0 0" />
+    <origin xyz="0.002 0 -0.02" rpy="0 0 0" />
     <parent link="FL_end1" />
     <child link="FL_foot" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="FL_foot1">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.014137" />
+      <inertia ixx="1.272345e-06" ixy="0" ixz="0" iyy="1.272345e-06" iyz="0" izz="1.272345e-06" />
+    </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
@@ -375,7 +385,7 @@
     <visual>
       <origin rpy="0 -0.2 0" xyz="0.015 0 -0.1" />
       <geometry>
-        <cylinder length="0.05" radius="0.01" />
+        <cylinder length="0.04" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -384,7 +394,7 @@
     <collision>
       <origin rpy="0 -0.2 0" xyz="0.015 0 -0.1" />
       <geometry>
-        <cylinder length="0.05" radius="0.01" />
+        <cylinder length="0.04" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -399,7 +409,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.08" radius="0.01" />
+        <cylinder length="0.07" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -408,7 +418,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.08" radius="0.01" />
+        <cylinder length="0.07" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -422,7 +432,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -431,7 +441,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -445,7 +455,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -454,7 +464,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -468,7 +478,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -477,7 +487,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -491,7 +501,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.02" radius="0.01" />
+        <cylinder length="0.01" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -500,7 +510,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.02" radius="0.01" />
+        <cylinder length="0.01" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -511,10 +521,15 @@
     <axis xyz="0 0 0" />
   </joint>
   <link name="FR_foot">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.014137" />
+      <inertia ixx="1.272345e-06" ixy="0" ixz="0" iyy="1.272345e-06" iyz="0" izz="1.272345e-06" />
+    </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <sphere radius="0.02" />
+        <sphere radius="0.015" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -523,17 +538,22 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <sphere radius="0.02" />
+        <sphere radius="0.015" />
       </geometry>
     </collision>
   </link>
   <joint name="FR_foot_joint" type="fixed" dont_collapse="true">
-    <origin xyz="0.005 0 -0.02" rpy="0 0 0" />
+    <origin xyz="0.002 0 -0.02" rpy="0 0 0" />
     <parent link="FR_end1" />
     <child link="FR_foot" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="FR_foot1">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.014137" />
+      <inertia ixx="1.272345e-06" ixy="0" ixz="0" iyy="1.272345e-06" iyz="0" izz="1.272345e-06" />
+    </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
@@ -623,7 +643,7 @@
     <visual>
       <origin rpy="0 -0.2 0" xyz="0.015 0 -0.1" />
       <geometry>
-        <cylinder length="0.05" radius="0.01" />
+        <cylinder length="0.04" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -632,7 +652,7 @@
     <collision>
       <origin rpy="0 -0.2 0" xyz="0.015 0 -0.1" />
       <geometry>
-        <cylinder length="0.05" radius="0.01" />
+        <cylinder length="0.04" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -647,7 +667,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.08" radius="0.01" />
+        <cylinder length="0.07" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -656,7 +676,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.08" radius="0.01" />
+        <cylinder length="0.07" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -670,7 +690,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -679,7 +699,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -693,7 +713,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -702,7 +722,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -716,7 +736,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -725,7 +745,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -739,7 +759,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.02" radius="0.01" />
+        <cylinder length="0.01" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -748,7 +768,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.02" radius="0.01" />
+        <cylinder length="0.01" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -759,10 +779,15 @@
     <axis xyz="0 0 0" />
   </joint>
   <link name="RL_foot">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.014137" />
+      <inertia ixx="1.272345e-06" ixy="0" ixz="0" iyy="1.272345e-06" iyz="0" izz="1.272345e-06" />
+    </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <sphere radius="0.02" />
+        <sphere radius="0.015" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -771,17 +796,22 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <sphere radius="0.02" />
+        <sphere radius="0.015" />
       </geometry>
     </collision>
   </link>
   <joint name="RL_foot_joint" type="fixed" dont_collapse="true">
-    <origin xyz="0.005 0 -0.02" rpy="0 0 0" />
+    <origin xyz="0.002 0 -0.02" rpy="0 0 0" />
     <parent link="RL_end1" />
     <child link="RL_foot" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="RL_foot1">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.014137" />
+      <inertia ixx="1.272345e-06" ixy="0" ixz="0" iyy="1.272345e-06" iyz="0" izz="1.272345e-06" />
+    </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
@@ -871,7 +901,7 @@
     <visual>
       <origin rpy="0 -0.2 0" xyz="0.015 0 -0.1" />
       <geometry>
-        <cylinder length="0.05" radius="0.01" />
+        <cylinder length="0.04" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -880,7 +910,7 @@
     <collision>
       <origin rpy="0 -0.2 0" xyz="0.015 0 -0.1" />
       <geometry>
-        <cylinder length="0.05" radius="0.01" />
+        <cylinder length="0.04" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -895,7 +925,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.08" radius="0.01" />
+        <cylinder length="0.07" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -904,7 +934,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.08" radius="0.01" />
+        <cylinder length="0.07" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -918,7 +948,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -927,7 +957,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -941,7 +971,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -950,7 +980,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -964,7 +994,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -973,7 +1003,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.04" radius="0.01" />
+        <cylinder length="0.03" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -987,7 +1017,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.02" radius="0.01" />
+        <cylinder length="0.01" radius="0.01" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -996,7 +1026,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <cylinder length="0.02" radius="0.01" />
+        <cylinder length="0.01" radius="0.01" />
       </geometry>
     </collision>
   </link>
@@ -1007,10 +1037,15 @@
     <axis xyz="0 0 0" />
   </joint>
   <link name="RR_foot">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.014137" />
+      <inertia ixx="1.272345e-06" ixy="0" ixz="0" iyy="1.272345e-06" iyz="0" izz="1.272345e-06" />
+    </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <sphere radius="0.02" />
+        <sphere radius="0.015" />
       </geometry>
       <material name="collision_visual">
         <color rgba="0.8 0.8 0.8 1" />
@@ -1019,17 +1054,22 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <sphere radius="0.02" />
+        <sphere radius="0.015" />
       </geometry>
     </collision>
   </link>
   <joint name="RR_foot_joint" type="fixed" dont_collapse="true">
-    <origin xyz="0.005 0 -0.02" rpy="0 0 0" />
+    <origin xyz="0.002 0 -0.02" rpy="0 0 0" />
     <parent link="RR_end1" />
     <child link="RR_foot" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="RR_foot1">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.014137" />
+      <inertia ixx="1.272345e-06" ixy="0" ixz="0" iyy="1.272345e-06" iyz="0" izz="1.272345e-06" />
+    </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
