@@ -72,7 +72,8 @@ class LeggedRobotCfg(BaseConfig):
             "platform_width": 2,
             "platform_gap": 0.1,
             "ladder_x_offset": -1.0,
-            "rough_probability": 0.3,
+            "rough_probability": 0.25,
+            "low_difficulty_probability": 0.25,
             "rough_height_range": (-0.04, 0),
             "rough_grid_size": 0.1,
         }
@@ -191,11 +192,13 @@ class LeggedRobotCfg(BaseConfig):
         base_height_target = 0.3
         max_contact_force = 200. # forces above this value are penalized
         foot_slip_threshold = 1.0
-        feet_air_time_threshold = 0.3
+        feet_air_time_threshold = 0.4
+        feet_air_time_upper_limit = 0.8
         goal_radius = 0.15
-        goal_speed_limit = 0.7
+        goal_speed_limit = 0.5
+        progress_reward_max_difficulty_multiplier = 1.5
         contact_force_threshold = 1.0
-        flat_height_threshold = 0.1
+        flat_height_std_threshold = 0.2
 
     class normalization:
         class obs_scales:
