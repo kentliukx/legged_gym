@@ -120,6 +120,7 @@ class LeggedRobotCfg(BaseConfig):
     class asset:
         file = ""
         name = "legged_robot"  # actor name
+        base_name = "base" # rigid body name used for base-directed disturbances
         foot_name = "None" # name of the feet bodies, used to index body state and contact force tensors
         penalize_contacts_on = []
         terminate_after_contacts_on = []
@@ -144,9 +145,17 @@ class LeggedRobotCfg(BaseConfig):
         friction_range = [0.5, 1.25]
         randomize_base_mass = False
         added_mass_range = [-1., 1.]
+        randomize_pd_gains = False
+        stiffness_multiplier_range = [1.0, 1.0]
+        damping_multiplier_range = [1.0, 1.0]
         push_robots = True
         push_interval_s = 15
         max_push_vel_xy = 1.
+        apply_base_force_torque = False
+        base_force_interval_s = 15.
+        base_force_duration_s = 0.2
+        max_base_force = [0., 0., 0.]
+        max_base_torque = [0., 0., 0.]
 
     class rewards:
         class scales:

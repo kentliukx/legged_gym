@@ -89,6 +89,7 @@ class LeggedRobot(BaseTask):
         for _ in range(self.cfg.control.decimation):
             self.torques = self._compute_torques(self.actions).view(self.torques.shape)
             self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
+            self._apply_base_force_torque_disturbance()
             self.gym.simulate(self.sim)
             if self.device == 'cpu':
                 self.gym.fetch_results(self.sim, True)
@@ -551,6 +552,73 @@ class LeggedRobot(BaseTask):
         self.root_states[:, 7:9] = torch_rand_float(-max_vel, max_vel, (self.num_envs, 2), device=self.device) # lin vel x/y
         self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states))
 
+    def _sample_symmetric_body_vector(self, max_values):
+        max_tensor = torch.as_tensor(max_values, dtype=torch.float, device=self.device)
+        if max_tensor.numel() == 1:
+            max_tensor = max_tensor.repeat(3)
+        elif max_tensor.numel() != 3:
+            raise ValueError("Base disturbance maxima must be a scalar or a 3-element sequence.")
+        return (2.0 * torch.rand(self.num_envs, 3, device=self.device) - 1.0) * max_tensor.view(1, 3)
+
+    def _resample_pd_gains(self, env_ids):
+        if len(env_ids) == 0:
+            return
+
+        base_p = self.base_p_gains.unsqueeze(0)
+        base_d = self.base_d_gains.unsqueeze(0)
+        if not self.cfg.domain_rand.randomize_pd_gains:
+            self.p_gain_multipliers[env_ids] = 1.0
+            self.d_gain_multipliers[env_ids] = 1.0
+        else:
+            p_low, p_high = self.cfg.domain_rand.stiffness_multiplier_range
+            d_low, d_high = self.cfg.domain_rand.damping_multiplier_range
+            self.p_gain_multipliers[env_ids] = torch_rand_float(p_low, p_high, (len(env_ids), 1), device=self.device)
+            self.d_gain_multipliers[env_ids] = torch_rand_float(d_low, d_high, (len(env_ids), 1), device=self.device)
+        self.p_gains[env_ids] = base_p * self.p_gain_multipliers[env_ids]
+        self.d_gains[env_ids] = base_d * self.d_gain_multipliers[env_ids]
+
+    def _apply_base_force_torque_disturbance(self):
+        cfg = self.cfg.domain_rand
+        if not cfg.apply_base_force_torque:
+            return
+
+        if self.base_force_duration_steps <= 0 or self.base_force_interval_steps <= 0:
+            return
+
+        if self.base_force_torque_steps_remaining <= 0:
+            if self.sim_step_counter > 0 and (self.sim_step_counter % self.base_force_interval_steps == 0):
+                self.base_force_local[:] = self._sample_symmetric_body_vector(cfg.max_base_force)
+                self.base_torque_local[:] = self._sample_symmetric_body_vector(cfg.max_base_torque)
+                self.base_force_torque_steps_remaining = self.base_force_duration_steps
+            else:
+                self.base_force_tensors.zero_()
+                self.base_torque_tensors.zero_()
+                self.gym.apply_rigid_body_force_tensors(
+                    self.sim,
+                    gymtorch.unwrap_tensor(self.base_force_tensors),
+                    gymtorch.unwrap_tensor(self.base_torque_tensors),
+                    gymapi.ENV_SPACE,
+                )
+                self.sim_step_counter += 1
+                return
+
+        world_force = quat_apply(self.base_quat, self.base_force_local)
+        world_torque = quat_apply(self.base_quat, self.base_torque_local)
+
+        self.base_force_tensors.zero_()
+        self.base_torque_tensors.zero_()
+        self.base_force_tensors[:, self.base_body_index, :] = world_force
+        self.base_torque_tensors[:, self.base_body_index, :] = world_torque
+        self.gym.apply_rigid_body_force_tensors(
+            self.sim,
+            gymtorch.unwrap_tensor(self.base_force_tensors),
+            gymtorch.unwrap_tensor(self.base_torque_tensors),
+            gymapi.ENV_SPACE,
+        )
+
+        self.base_force_torque_steps_remaining -= 1
+        self.sim_step_counter += 1
+
     def _update_terrain_curriculum(self, env_ids):
         """ Implements the game-inspired curriculum.
 
@@ -708,13 +776,18 @@ class LeggedRobot(BaseTask):
 
         # initialize some data used later on
         self.common_step_counter = 0
+        self.sim_step_counter = 0
         self.extras = {}
         self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
         self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
         self.forward_vec = to_torch([1., 0., 0.], device=self.device).repeat((self.num_envs, 1))
         self.torques = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
-        self.p_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
-        self.d_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.p_gains = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.d_gains = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.base_p_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.base_d_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.p_gain_multipliers = torch.ones(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
+        self.d_gain_multipliers = torch.ones(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
@@ -742,6 +815,11 @@ class LeggedRobot(BaseTask):
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        self.base_force_tensors = torch.zeros(self.num_envs, self.num_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
+        self.base_torque_tensors = torch.zeros_like(self.base_force_tensors)
+        self.base_force_local = torch.zeros(self.num_envs, 3, dtype=torch.float, device=self.device, requires_grad=False)
+        self.base_torque_local = torch.zeros_like(self.base_force_local)
+        self.base_force_torque_steps_remaining = 0
         if self.cfg.terrain.measure_heights:
             self.height_points = self._init_height_points()
         self.measured_heights = 0
@@ -755,15 +833,16 @@ class LeggedRobot(BaseTask):
             found = False
             for dof_name in self.cfg.control.stiffness.keys():
                 if dof_name in name:
-                    self.p_gains[i] = self.cfg.control.stiffness[dof_name]
-                    self.d_gains[i] = self.cfg.control.damping[dof_name]
+                    self.base_p_gains[i] = self.cfg.control.stiffness[dof_name]
+                    self.base_d_gains[i] = self.cfg.control.damping[dof_name]
                     found = True
             if not found:
-                self.p_gains[i] = 0.
-                self.d_gains[i] = 0.
+                self.base_p_gains[i] = 0.
+                self.base_d_gains[i] = 0.
                 if self.cfg.control.control_type in ["P", "V"]:
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
+        self._resample_pd_gains(torch.arange(self.num_envs, device=self.device))
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -929,6 +1008,10 @@ class LeggedRobot(BaseTask):
         for i in range(len(termination_contact_names)):
             self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], termination_contact_names[i])
 
+        self.base_body_index = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], self.cfg.asset.base_name)
+        if self.base_body_index < 0:
+            raise ValueError(f"Could not find base rigid body '{self.cfg.asset.base_name}' in asset body names: {body_names}")
+
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
             Otherwise create a grid.
@@ -1037,6 +1120,8 @@ class LeggedRobot(BaseTask):
         self.max_episode_length = np.ceil(self.max_episode_length_s / self.dt)
 
         self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)
+        self.base_force_interval_steps = int(np.ceil(self.cfg.domain_rand.base_force_interval_s / self.sim_params.dt))
+        self.base_force_duration_steps = int(np.ceil(self.cfg.domain_rand.base_force_duration_s / self.sim_params.dt))
 
     def _draw_debug_vis(self):
         """ Draws visualizations for dubugging (slows down simulation a lot).
