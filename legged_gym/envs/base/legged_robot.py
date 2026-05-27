@@ -311,6 +311,12 @@ class LeggedRobot(BaseTask):
             foot_contact,
             has_ladder_obs,
             ladder_obs,
+            self.friction_coeffs,
+            self.base_added_mass,
+            self.p_gain_multipliers,
+            self.d_gain_multipliers,
+            self.base_force_local * self.obs_scales.applied_wrench,
+            self.base_torque_local * self.obs_scales.applied_wrench,
 
             # height scan
             height_scan
@@ -366,11 +372,13 @@ class LeggedRobot(BaseTask):
                 friction_range = self.cfg.domain_rand.friction_range
                 num_buckets = 64
                 bucket_ids = torch.randint(0, num_buckets, (self.num_envs, 1))
-                friction_buckets = torch_rand_float(friction_range[0], friction_range[1], (num_buckets,1), device='cpu')
-                self.friction_coeffs = friction_buckets[bucket_ids]
+                friction_buckets = torch_rand_float(friction_range[0], friction_range[1], (num_buckets,1), device=self.device)
+                self.friction_coeffs = friction_buckets[bucket_ids.squeeze(-1)]
+        elif env_id == 0:
+            self.friction_coeffs = torch.full((self.num_envs, 1), self.cfg.terrain.static_friction, dtype=torch.float, device=self.device)
 
-            for s in range(len(props)):
-                props[s].friction = self.friction_coeffs[env_id]
+        for s in range(len(props)):
+            props[s].friction = self.friction_coeffs[env_id]
         return props
 
     def _process_dof_props(self, props, env_id):
@@ -411,7 +419,11 @@ class LeggedRobot(BaseTask):
         # randomize base mass
         if self.cfg.domain_rand.randomize_base_mass:
             rng = self.cfg.domain_rand.added_mass_range
-            props[0].mass += np.random.uniform(rng[0], rng[1])
+            added_mass = np.random.uniform(rng[0], rng[1])
+            props[0].mass += added_mass
+            self.base_added_mass[env_id, 0] = added_mass
+        else:
+            self.base_added_mass[env_id, 0] = 0.0
         return props
     
     def _post_physics_step_callback(self):
@@ -591,6 +603,8 @@ class LeggedRobot(BaseTask):
                 self.base_torque_local[:] = self._sample_symmetric_body_vector(cfg.max_base_torque)
                 self.base_force_torque_steps_remaining = self.base_force_duration_steps
             else:
+                self.base_force_local.zero_()
+                self.base_torque_local.zero_()
                 self.base_force_tensors.zero_()
                 self.base_torque_tensors.zero_()
                 self.gym.apply_rigid_body_force_tensors(
@@ -970,6 +984,7 @@ class LeggedRobot(BaseTask):
 
         base_init_state_list = self.cfg.init_state.pos + self.cfg.init_state.rot + self.cfg.init_state.lin_vel + self.cfg.init_state.ang_vel
         self.base_init_state = to_torch(base_init_state_list, device=self.device, requires_grad=False)
+        self.base_added_mass = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
         start_pose = gymapi.Transform()
         start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
 
