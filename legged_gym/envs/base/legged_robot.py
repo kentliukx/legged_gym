@@ -944,7 +944,7 @@ class LeggedRobot(BaseTask):
             self.ladder_levels = torch.randint(1, max_init_level+1, (self.num_envs,), device=self.device)
             self.terrain_levels = self.ladder_levels.clone()
             self.terrain_types = torch.randint(0, self.cfg.terrain.num_cols, (self.num_envs,), device=self.device)
-            self.max_terrain_level = self.cfg.terrain.num_rows
+            self.max_terrain_level = self.cfg.terrain.num_rows - 1
             self._sample_terrain_levels_and_types(torch.arange(self.num_envs, device=self.device))
             self.terrain_origins = torch.from_numpy(self.terrain.env_origins).to(self.device).to(torch.float)
             self.env_origins[:] = self.terrain_origins[self.terrain_levels, self.terrain_types]
