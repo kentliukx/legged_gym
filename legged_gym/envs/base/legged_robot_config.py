@@ -33,7 +33,7 @@ from .base_config import BaseConfig
 class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 4096
-        num_observations = 284
+        num_observations = 288
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
         debug_terrain_sampling = False
@@ -161,6 +161,7 @@ class LeggedRobotCfg(BaseConfig):
             # Shaping rewards
             flat_orientation_when_flat = -1.0
             foot_slippage = -0.1
+            feet_air_time = 0.1
             collision = -0.1
             stand_still_when_reached_goal = -0.5
             stand_still_contact_when_reached_goal = -0.5
@@ -181,7 +182,6 @@ class LeggedRobotCfg(BaseConfig):
             base_collision = 0
             feet_stumble = 0.0
             base_height = 0 
-            feet_air_time = 0
 
         only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
@@ -191,6 +191,7 @@ class LeggedRobotCfg(BaseConfig):
         base_height_target = 0.3
         max_contact_force = 200. # forces above this value are penalized
         foot_slip_threshold = 1.0
+        feet_air_time_threshold = 0.3
         goal_radius = 0.15
         goal_speed_limit = 0.7
         contact_force_threshold = 1.0

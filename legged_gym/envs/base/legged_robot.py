@@ -288,6 +288,7 @@ class LeggedRobot(BaseTask):
         """
         ladder_obs = self._get_ladder_observations()
         has_ladder_obs = self._get_has_ladder_observations()
+        foot_contact_obs = self._get_foot_contacts().float()
         height_scan = torch.clip(
                 self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1) * self.obs_scales.height_measurements
 
@@ -299,6 +300,7 @@ class LeggedRobot(BaseTask):
             (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
             self.dof_vel * self.obs_scales.dof_vel,
             self.actions,
+            foot_contact_obs,
             # goal
             self.commands * self.commands_scale,
             self.reached_goal,
@@ -633,7 +635,9 @@ class LeggedRobot(BaseTask):
         noise_vec[reached_goal_start:reached_goal_start + 1] = 0. # reached goal flag
         has_ladder_start = reached_goal_start + 1
         noise_vec[has_ladder_start:has_ladder_start + 1] = 0. # has ladder flag
-        ladder_obs_start = has_ladder_start + 1
+        contact_obs_start = has_ladder_start + 1
+        noise_vec[contact_obs_start:contact_obs_start + len(self.feet_indices)] = 0. # foot contact flags
+        ladder_obs_start = contact_obs_start + len(self.feet_indices)
         noise_vec[ladder_obs_start:ladder_obs_start + 4] = 0. # ladder geometry
         num_height_obs = len(self.cfg.terrain.measured_points_x) * len(self.cfg.terrain.measured_points_y) if self.cfg.terrain.measure_heights else 0
         if self.cfg.terrain.measure_heights:
@@ -1219,13 +1223,17 @@ class LeggedRobot(BaseTask):
     def _reward_feet_air_time(self):
         # Reward long steps
         # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
-        contact = self.contact_forces[:, self.feet_indices, 2] > 1.
+        goal_reached, _ = self._get_goal_delta()
+        contact = self._get_foot_contacts()
         contact_filt = torch.logical_or(contact, self.last_contacts) 
         self.last_contacts = contact
         first_contact = (self.feet_air_time > 0.) * contact_filt
         self.feet_air_time += self.dt
-        rew_airTime = torch.sum((self.feet_air_time - 0.5) * first_contact, dim=1) # reward only on first contact with the ground
-        rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.1 #no reward for zero command
+        rew_airTime = torch.sum(
+            (self.feet_air_time - self.cfg.rewards.feet_air_time_threshold) * first_contact,
+            dim=1
+        ) # reward only on first contact with the ground
+        rew_airTime *= (1. - goal_reached)
         self.feet_air_time *= ~contact_filt
         return rew_airTime
     
