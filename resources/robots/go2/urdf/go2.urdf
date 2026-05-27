@@ -239,29 +239,6 @@
     <child link="FL_end2" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="FL_end3">
-    <visual>
-      <origin rpy="0 0 0" xyz="0 0 0" />
-      <geometry>
-        <cylinder length="0.01" radius="0.01" />
-      </geometry>
-      <material name="collision_visual">
-        <color rgba="0.8 0.8 0.8 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin rpy="0 0 0" xyz="0 0 0" />
-      <geometry>
-        <cylinder length="0.01" radius="0.01" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="FL_end3_joint" type="fixed">
-    <origin xyz="-0.005 0 0.025" rpy="0 -0.4 0" />
-    <parent link="FL_end2" />
-    <child link="FL_end3" />
-    <axis xyz="0 0 0" />
-  </joint>
   <link name="FL_foot">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -313,8 +290,8 @@
     </collision>
   </link>
   <joint name="FL_foot1_joint" type="fixed">
-    <origin xyz="0 0 0.015" rpy="0 0 0" />
-    <parent link="FL_end3" />
+    <origin xyz="0 0 0.02" rpy="0 0 0" />
+    <parent link="FL_end2" />
     <child link="FL_foot1" />
     <axis xyz="0 0 0" />
   </joint>
@@ -497,29 +474,6 @@
     <child link="FR_end2" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="FR_end3">
-    <visual>
-      <origin rpy="0 0 0" xyz="0 0 0" />
-      <geometry>
-        <cylinder length="0.01" radius="0.01" />
-      </geometry>
-      <material name="collision_visual">
-        <color rgba="0.8 0.8 0.8 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin rpy="0 0 0" xyz="0 0 0" />
-      <geometry>
-        <cylinder length="0.01" radius="0.01" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="FR_end3_joint" type="fixed">
-    <origin xyz="-0.005 0 0.025" rpy="0 -0.4 0" />
-    <parent link="FR_end2" />
-    <child link="FR_end3" />
-    <axis xyz="0 0 0" />
-  </joint>
   <link name="FR_foot">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -571,8 +525,8 @@
     </collision>
   </link>
   <joint name="FR_foot1_joint" type="fixed">
-    <origin xyz="0 0 0.015" rpy="0 0 0" />
-    <parent link="FR_end3" />
+    <origin xyz="0 0 0.02" rpy="0 0 0" />
+    <parent link="FR_end2" />
     <child link="FR_foot1" />
     <axis xyz="0 0 0" />
   </joint>
@@ -709,29 +663,6 @@
     <child link="RL_end" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="RL_end1">
-    <visual>
-      <origin rpy="0 0 0" xyz="0 0 0" />
-      <geometry>
-        <cylinder length="0.03" radius="0.01" />
-      </geometry>
-      <material name="collision_visual">
-        <color rgba="0.8 0.8 0.8 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin rpy="0 0 0" xyz="0 0 0" />
-      <geometry>
-        <cylinder length="0.03" radius="0.01" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="RL_end1_joint" type="fixed">
-    <origin xyz="-0.01 0 -0.03" rpy="0 0.8 0" />
-    <parent link="RL_end" />
-    <child link="RL_end1" />
-    <axis xyz="0 0 0" />
-  </joint>
   <link name="RL_end2">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -802,7 +733,7 @@
   </link>
   <joint name="RL_foot_joint" type="fixed" dont_collapse="true">
     <origin xyz="0.002 0 -0.02" rpy="0 0 0" />
-    <parent link="RL_end1" />
+    <parent link="RL_end" />
     <child link="RL_foot" />
     <axis xyz="0 0 0" />
   </joint>
@@ -967,29 +898,6 @@
     <child link="RR_end" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="RR_end1">
-    <visual>
-      <origin rpy="0 0 0" xyz="0 0 0" />
-      <geometry>
-        <cylinder length="0.03" radius="0.01" />
-      </geometry>
-      <material name="collision_visual">
-        <color rgba="0.8 0.8 0.8 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin rpy="0 0 0" xyz="0 0 0" />
-      <geometry>
-        <cylinder length="0.03" radius="0.01" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="RR_end1_joint" type="fixed">
-    <origin xyz="-0.01 0 -0.03" rpy="0 0.8 0" />
-    <parent link="RR_end" />
-    <child link="RR_end1" />
-    <axis xyz="0 0 0" />
-  </joint>
   <link name="RR_end2">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -1060,7 +968,7 @@
   </link>
   <joint name="RR_foot_joint" type="fixed" dont_collapse="true">
     <origin xyz="0.002 0 -0.02" rpy="0 0 0" />
-    <parent link="RR_end1" />
+    <parent link="RR_end" />
     <child link="RR_foot" />
     <axis xyz="0 0 0" />
   </joint>
