@@ -668,6 +668,15 @@ class LeggedRobot(BaseTask):
             move_down = ~move_up
         move_up = move_up & current_is_ladder
         move_down = move_down & current_is_ladder
+
+        review_failed = self.review_episode_mask[env_ids] & current_is_ladder & ~move_up
+        self.ladder_levels[env_ids] = torch.where(
+            review_failed,
+            self.terrain_levels[env_ids],
+            self.ladder_levels[env_ids],
+        )
+        move_down = move_down & ~review_failed
+
         self.ladder_levels[env_ids] += 1 * move_up - 1 * move_down
         self.ladder_levels[env_ids] = torch.clamp(self.ladder_levels[env_ids], min=1, max=self.max_terrain_level)
         self._sample_terrain_levels_and_types(env_ids)
@@ -812,6 +821,7 @@ class LeggedRobot(BaseTask):
         self.goal_dist = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         self.min_goal_dist = torch.full((self.num_envs,), float("inf"), dtype=torch.float, device=self.device, requires_grad=False)
         self.reached_goal = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
+        self.review_episode_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
         self.difficulty = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         self._update_difficulty()
         if self.cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
@@ -985,6 +995,7 @@ class LeggedRobot(BaseTask):
         base_init_state_list = self.cfg.init_state.pos + self.cfg.init_state.rot + self.cfg.init_state.lin_vel + self.cfg.init_state.ang_vel
         self.base_init_state = to_torch(base_init_state_list, device=self.device, requires_grad=False)
         self.base_added_mass = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
+        self.review_episode_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
         start_pose = gymapi.Transform()
         start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
 
@@ -1073,6 +1084,7 @@ class LeggedRobot(BaseTask):
         sample_draws = torch.rand(len(env_ids), device=self.device)
         use_rough = sample_draws < rough_prob
         use_low_difficulty = (sample_draws >= rough_prob) & (sample_draws < rough_prob + low_difficulty_prob)
+        self.review_episode_mask[env_ids] = use_low_difficulty
         self.terrain_types[env_ids] = torch.randint(0, terrain_num_cols, (len(env_ids),), device=self.device)
         saved_ladder_levels = self.ladder_levels[env_ids].clamp(min=1, max=self.max_terrain_level)
         max_lower_levels = torch.clamp(saved_ladder_levels - 1, min=1)
