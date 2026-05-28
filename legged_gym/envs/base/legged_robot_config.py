@@ -143,15 +143,15 @@ class LeggedRobotCfg(BaseConfig):
     class domain_rand:
         randomize_friction = True
         friction_range = [0.5, 1.25]
-        randomize_base_mass = False
+        randomize_base_mass = True
         added_mass_range = [-1., 1.]
-        randomize_pd_gains = False
+        randomize_pd_gains = True
         stiffness_multiplier_range = [1.0, 1.0]
         damping_multiplier_range = [1.0, 1.0]
-        push_robots = True
+        push_robots = False
         push_interval_s = 15
         max_push_vel_xy = 1.
-        apply_base_force_torque = False
+        apply_base_force_torque = True
         base_force_interval_s = 15.
         base_force_duration_s = 0.2
         max_base_force = [0., 0., 0.]
@@ -202,7 +202,7 @@ class LeggedRobotCfg(BaseConfig):
         max_contact_force = 200. # forces above this value are penalized
         foot_slip_threshold = 1.0
         feet_air_time_threshold = 0.4
-        feet_air_time_upper_limit = 0.8
+        feet_air_time_upper_limit = 0.6
         goal_radius = 0.15
         goal_speed_limit = 0.5
         progress_reward_max_difficulty_multiplier = 1.5
