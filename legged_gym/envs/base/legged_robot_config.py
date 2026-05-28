@@ -172,6 +172,7 @@ class LeggedRobotCfg(BaseConfig):
             flat_orientation_when_flat = -1.0
             foot_slippage = -0.1
             feet_air_time = 0.1
+            contact_symmetry = 0.1
             collision = -0.1
             stand_still_when_reached_goal = -0.5
             stand_still_contact_when_reached_goal = -0.5

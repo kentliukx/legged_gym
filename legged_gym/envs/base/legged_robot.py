@@ -1040,6 +1040,7 @@ class LeggedRobot(BaseTask):
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
             self.feet_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], feet_names[i])
+        self.foot_name_to_obs_index = {name: i for i, name in enumerate(feet_names)}
 
         self.penalised_contact_indices = torch.zeros(len(penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(penalized_contact_names)):
@@ -1395,6 +1396,22 @@ class LeggedRobot(BaseTask):
         rew_airTime = torch.sum(air_time_reward * self.feet_first_contact.float(), dim=1) # reward only on first contact with the ground
         rew_airTime *= (1. - goal_reached)
         return rew_airTime
+
+    def _reward_contact_symmetry(self):
+        required_feet = ("FL", "FR", "RL", "RR")
+        if not hasattr(self, "foot_name_to_obs_index"):
+            return torch.zeros(self.num_envs, device=self.device)
+        matched_indices = {}
+        for leg_prefix in required_feet:
+            matched_name = next((name for name in self.foot_name_to_obs_index if name.startswith(leg_prefix)), None)
+            if matched_name is None:
+                return torch.zeros(self.num_envs, device=self.device)
+            matched_indices[leg_prefix] = self.foot_name_to_obs_index[matched_name]
+        contact = self._get_foot_contacts()
+        fl_rr_match = (contact[:, matched_indices["FL"]] == contact[:, matched_indices["RR"]]).float()
+        fr_rl_match = (contact[:, matched_indices["FR"]] == contact[:, matched_indices["RL"]]).float()
+        pair_match = torch.stack((fl_rr_match, fr_rl_match), dim=1)
+        return 2.0 * torch.mean(pair_match, dim=1) - 1.0
     
     def _reward_stumble(self):
         # Penalize feet hitting vertical surfaces
