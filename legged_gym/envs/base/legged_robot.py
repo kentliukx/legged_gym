@@ -120,6 +120,7 @@ class LeggedRobot(BaseTask):
         self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        self._update_feet_air_time_state()
 
         self._post_physics_step_callback()
 
@@ -187,6 +188,7 @@ class LeggedRobot(BaseTask):
         self.last_last_actions[env_ids] = 0.
         self.last_dof_vel[env_ids] = 0.
         self.feet_air_time[env_ids] = 0.
+        self.feet_first_contact[env_ids] = False
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
         # fill extras
@@ -292,6 +294,7 @@ class LeggedRobot(BaseTask):
         ladder_obs = self._get_ladder_observations()
         has_ladder_obs = self._get_has_ladder_observations()
         foot_contact = self._get_foot_contacts().float()
+        foot_air_time = self.feet_air_time
         height_scan = torch.clip(
                 self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1) * self.obs_scales.height_measurements
 
@@ -309,6 +312,7 @@ class LeggedRobot(BaseTask):
 
             # privileged information
             foot_contact,
+            foot_air_time,
             has_ladder_obs,
             ladder_obs,
             self.friction_coeffs,
@@ -722,7 +726,9 @@ class LeggedRobot(BaseTask):
         action_start = dof_vel_start + self.num_actions
         contact_obs_start = action_start + self.num_actions
         noise_vec[contact_obs_start:contact_obs_start + len(self.feet_indices)] = 0. # foot contact flags
-        command_start = contact_obs_start + len(self.feet_indices)
+        foot_air_time_start = contact_obs_start + len(self.feet_indices)
+        noise_vec[foot_air_time_start:foot_air_time_start + len(self.feet_indices)] = 0. # foot air time
+        command_start = foot_air_time_start + len(self.feet_indices)
         noise_vec[command_start:command_start + self.cfg.commands.num_commands] = 0. # commands
         reached_goal_start = command_start + self.cfg.commands.num_commands
         noise_vec[reached_goal_start:reached_goal_start + 1] = 0. # reached goal flag
@@ -835,6 +841,7 @@ class LeggedRobot(BaseTask):
             self._randomize_rough_targets(torch.arange(self.num_envs, device=self.device))
             self._reset_goal_progress(torch.arange(self.num_envs, device=self.device))
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.feet_first_contact = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
@@ -867,6 +874,14 @@ class LeggedRobot(BaseTask):
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
         self._resample_pd_gains(torch.arange(self.num_envs, device=self.device))
+
+    def _update_feet_air_time_state(self):
+        contact = self._get_foot_contacts()
+        contact_filt = torch.logical_or(contact, self.last_contacts)
+        self.feet_first_contact = (self.feet_air_time > 0.) & contact_filt
+        self.last_contacts = contact
+        self.feet_air_time += self.dt
+        self.feet_air_time *= ~contact_filt
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -1368,14 +1383,8 @@ class LeggedRobot(BaseTask):
 
     def _reward_feet_air_time(self):
         # Reward moderate air time and penalize overly long swing time.
-        # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
         goal_reached, _ = self._get_goal_delta()
-        contact = self._get_foot_contacts()
-        contact_filt = torch.logical_or(contact, self.last_contacts) 
-        self.last_contacts = contact
-        first_contact = (self.feet_air_time > 0.) * contact_filt
-        self.feet_air_time += self.dt
-        air_time = self.feet_air_time
+        air_time = self.feet_air_time + self.dt * self.feet_first_contact.float()
         lower = self.cfg.rewards.feet_air_time_threshold
         upper = self.cfg.rewards.feet_air_time_upper_limit
         air_time_reward = torch.where(
@@ -1383,9 +1392,8 @@ class LeggedRobot(BaseTask):
             air_time - lower,
             upper - air_time
         )
-        rew_airTime = torch.sum(air_time_reward * first_contact, dim=1) # reward only on first contact with the ground
+        rew_airTime = torch.sum(air_time_reward * self.feet_first_contact.float(), dim=1) # reward only on first contact with the ground
         rew_airTime *= (1. - goal_reached)
-        self.feet_air_time *= ~contact_filt
         return rew_airTime
     
     def _reward_stumble(self):

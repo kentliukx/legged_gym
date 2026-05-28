@@ -33,7 +33,7 @@ from .base_config import BaseConfig
 class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 4096
-        num_observations = 298
+        num_observations = 302
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
         debug_terrain_sampling = False
@@ -72,7 +72,7 @@ class LeggedRobotCfg(BaseConfig):
             "platform_width": 2,
             "platform_gap": 0.1,
             "ladder_x_offset": -1.0,
-            "rough_probability": 0.4,
+            "rough_probability": 0.3,
             "low_difficulty_probability": 0.3,
             "rough_height_range": (-0.04, 0),
             "rough_grid_size": 0.1,
