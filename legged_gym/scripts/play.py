@@ -60,7 +60,13 @@ def play(args):
     # load policy
     train_cfg.runner.resume = True
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
-    policy = ppo_runner.get_inference_policy(device=env.device)
+    if args.sample:
+        ppo_runner.alg.actor_critic.eval()
+        if env.device != "cpu":
+            ppo_runner.alg.actor_critic.to(env.device)
+        policy = ppo_runner.alg.actor_critic.act
+    else:
+        policy = ppo_runner.get_inference_policy(device=env.device)
     
     # export policy as a jit module (used to run it from C++)
     if EXPORT_POLICY:
@@ -79,7 +85,7 @@ def play(args):
     img_idx = 0
     frame_wall_time = time.perf_counter()
 
-    for i in range(10*int(env.max_episode_length)):
+    for i in range(100*int(env.max_episode_length)):
         actions = policy(obs.detach())
         obs, _, rews, dones, infos = env.step(actions.detach())
         if not args.headless:
