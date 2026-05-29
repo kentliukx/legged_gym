@@ -172,7 +172,8 @@ class LeggedRobotCfg(BaseConfig):
             flat_orientation_when_flat = -1.0
             foot_slippage = -0.1
             feet_air_time = 0.1
-            contact_symmetry = 0.1
+            excess_feet_air_time = -0.5
+            contact_symmetry = 0
             collision = -0.1
             stand_still_when_reached_goal = -0.5
             stand_still_contact_when_reached_goal = -0.5
@@ -203,7 +204,7 @@ class LeggedRobotCfg(BaseConfig):
         max_contact_force = 200. # forces above this value are penalized
         foot_slip_threshold = 1.0
         feet_air_time_threshold = 0.4
-        feet_air_time_upper_limit = 0.6
+        feet_air_time_upper_limit = 0.8
         goal_radius = 0.15
         goal_speed_limit = 0.5
         progress_reward_max_difficulty_multiplier = 1.5

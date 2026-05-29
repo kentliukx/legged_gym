@@ -1388,14 +1388,20 @@ class LeggedRobot(BaseTask):
         air_time = self.feet_air_time + self.dt * self.feet_first_contact.float()
         lower = self.cfg.rewards.feet_air_time_threshold
         upper = self.cfg.rewards.feet_air_time_upper_limit
-        air_time_reward = torch.where(
-            air_time <= upper,
-            air_time - lower,
-            upper - air_time
-        )
+        air_time_reward = torch.clamp(air_time, max=upper) - lower
         rew_airTime = torch.sum(air_time_reward * self.feet_first_contact.float(), dim=1) # reward only on first contact with the ground
         rew_airTime *= (1. - goal_reached)
         return rew_airTime
+
+    def _reward_excess_feet_air_time(self):
+        contact = self._get_foot_contacts()
+        effective_air_time = self.feet_air_time + self.dt * (~contact).float()
+        excess_air_time = torch.clamp(
+            effective_air_time - self.cfg.rewards.feet_air_time_upper_limit,
+            min=0.0,
+        )
+        rew_excess_air_time = torch.sum(excess_air_time * (~contact).float(), dim=1)
+        return rew_excess_air_time
 
     def _reward_contact_symmetry(self):
         required_feet = ("FL", "FR", "RL", "RR")
