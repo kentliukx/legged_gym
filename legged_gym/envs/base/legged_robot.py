@@ -1396,11 +1396,8 @@ class LeggedRobot(BaseTask):
     def _reward_excess_feet_air_time(self):
         contact = self._get_foot_contacts()
         effective_air_time = self.feet_air_time + self.dt * (~contact).float()
-        excess_air_time = torch.clamp(
-            effective_air_time - self.cfg.rewards.feet_air_time_upper_limit,
-            min=0.0,
-        )
-        rew_excess_air_time = torch.sum(excess_air_time * (~contact).float(), dim=1)
+        exceeds_limit = (effective_air_time > self.cfg.rewards.feet_air_time_upper_limit) & (~contact)
+        rew_excess_air_time = torch.sum(exceeds_limit.float(), dim=1)
         return rew_excess_air_time
 
     def _reward_contact_symmetry(self):
