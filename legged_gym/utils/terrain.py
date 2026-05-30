@@ -121,14 +121,17 @@ class Terrain:
         all_triangles = []
         vertex_offset = 0
         self.rough_probability = float(np.clip(rough_probability, 0.0, 1.0))
+        shared_bar_spacing_by_col = [_sample_range(bar_spacing) for _ in range(self.num_cols)]
 
         for k in range(self.cfg.num_sub_terrains):
             (i, j) = np.unravel_index(k, (self.cfg.num_rows, self.num_cols))
+            tile_bar_spacing = shared_bar_spacing_by_col[j]
 
             is_rough = i == 0
             self.ladder_mask[i, j] = not is_rough
 
             if is_rough:
+                self.ladder_bar_spacing[i, j] = tile_bar_spacing
                 self.ladder_angles[i, j] = 0.0
                 local_physics_height_field = np.zeros(
                     (self.length_per_env_pixels, self.width_per_env_pixels),
@@ -144,7 +147,6 @@ class Terrain:
                 row_difficulty = ((i - 1) / (self.cfg.num_rows - 2)
                                   if self.cfg.curriculum and self.cfg.num_rows > 2
                                   else difficulty)
-                tile_bar_spacing = _sample_range(bar_spacing)
                 tile_ladder_angle = _lerp_range(ladder_angle, row_difficulty)
                 self.ladder_bar_spacing[i, j] = tile_bar_spacing
                 self.ladder_angles[i, j] = tile_ladder_angle

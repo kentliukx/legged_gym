@@ -295,7 +295,6 @@ class LeggedRobot(BaseTask):
         """ Computes observations
         """
         ladder_obs = self._get_ladder_observations()
-        has_ladder_obs = self._get_has_ladder_observations()
         foot_contact = self._get_foot_contacts().float()
         foot_air_time = self.feet_air_time
         height_scan = torch.clip(
@@ -316,7 +315,6 @@ class LeggedRobot(BaseTask):
             # privileged information
             foot_contact,
             foot_air_time,
-            has_ladder_obs,
             ladder_obs,
             self.friction_coeffs,
             self.base_added_mass,
@@ -727,31 +725,25 @@ class LeggedRobot(BaseTask):
             noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
         )
         action_start = dof_vel_start + self.num_actions
-        contact_obs_start = action_start + self.num_actions
-        noise_vec[contact_obs_start:contact_obs_start + len(self.feet_indices)] = 0. # foot contact flags
-        foot_air_time_start = contact_obs_start + len(self.feet_indices)
-        noise_vec[foot_air_time_start:foot_air_time_start + len(self.feet_indices)] = 0. # foot air time
-        command_start = foot_air_time_start + len(self.feet_indices)
+        command_start = action_start + self.num_actions
         noise_vec[command_start:command_start + self.cfg.commands.num_commands] = 0. # commands
         reached_goal_start = command_start + self.cfg.commands.num_commands
         noise_vec[reached_goal_start:reached_goal_start + 1] = 0. # reached goal flag
-        has_ladder_start = reached_goal_start + 1
-        noise_vec[has_ladder_start:has_ladder_start + 1] = 0. # has ladder flag
-        ladder_obs_start = has_ladder_start + 1
+        contact_obs_start = reached_goal_start + 1
+        noise_vec[contact_obs_start:contact_obs_start + len(self.feet_indices)] = 0. # foot contact flags
+        foot_air_time_start = contact_obs_start + len(self.feet_indices)
+        noise_vec[foot_air_time_start:foot_air_time_start + len(self.feet_indices)] = 0. # foot air time
+        ladder_obs_start = foot_air_time_start + len(self.feet_indices)
         noise_vec[ladder_obs_start:ladder_obs_start + 4] = 0. # ladder geometry
         num_height_obs = len(self.cfg.terrain.measured_points_x) * len(self.cfg.terrain.measured_points_y) if self.cfg.terrain.measure_heights else 0
         if self.cfg.terrain.measure_heights:
-            height_obs_start = ladder_obs_start + 4
+            domain_rand_obs_start = ladder_obs_start + 4
+            noise_vec[domain_rand_obs_start:domain_rand_obs_start + 10] = 0. # domain rand + wrench
+            height_obs_start = domain_rand_obs_start + 10
             noise_vec[height_obs_start:height_obs_start + num_height_obs] = (
                 noise_scales.height_measurements * noise_level * self.obs_scales.height_measurements
             )
         return noise_vec
-
-    def _get_has_ladder_observations(self):
-        has_ladder = torch.zeros(self.num_envs, 1, device=self.device, dtype=torch.float)
-        if hasattr(self, "terrain_ladder_mask"):
-            has_ladder[:, 0] = self.terrain_ladder_mask[self.terrain_levels, self.terrain_types].float()
-        return has_ladder
 
     def _get_ladder_observations(self):
         ladder_obs = torch.zeros(self.num_envs, 4, device=self.device, dtype=torch.float)
@@ -762,8 +754,8 @@ class LeggedRobot(BaseTask):
 
         bar_spacing = self.terrain_ladder_bar_spacing[self.terrain_levels, self.terrain_types]
         ladder_angle_deg = self.terrain_ladder_angles[self.terrain_levels, self.terrain_types]
-        is_ladder = self.terrain_ladder_mask[self.terrain_levels, self.terrain_types]
         ladder_angle_rad = torch.deg2rad(ladder_angle_deg)
+        is_ladder = self.terrain_ladder_mask[self.terrain_levels, self.terrain_types]
 
         forward = quat_apply(self.base_quat, self.forward_vec)
         base_heading = torch.atan2(forward[:, 1], forward[:, 0])
