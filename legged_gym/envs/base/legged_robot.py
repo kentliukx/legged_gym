@@ -193,6 +193,15 @@ class LeggedRobot(BaseTask):
         self.feet_ground_time[env_ids] = 0.
         self.feet_first_air[env_ids] = False
         self.feet_last_ground_time[env_ids] = 0.
+        self.foot_contacts[env_ids] = False
+        self.last_contacts[env_ids] = False
+        self.phase_feet_air_time[env_ids] = 0.
+        self.phase_feet_first_contact[env_ids] = False
+        self.phase_feet_ground_time[env_ids] = 0.
+        self.phase_feet_first_air[env_ids] = False
+        self.phase_feet_last_ground_time[env_ids] = 0.
+        self.phase_foot_contacts[env_ids] = False
+        self.last_phase_contacts[env_ids] = False
         if hasattr(self, "filtered_symmetry_torque_abs_diff"):
             self.filtered_symmetry_torque_abs_diff[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
@@ -300,7 +309,7 @@ class LeggedRobot(BaseTask):
         ladder_obs = self._get_ladder_observations()
         foot_contact = self._get_foot_contacts().float()
         foot_air_time = self.feet_air_time
-        foot_ground_time = self.feet_ground_time
+        phase_feet_ground_time = self.phase_feet_ground_time
         height_scan = torch.clip(
                 self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1) * self.obs_scales.height_measurements
 
@@ -319,7 +328,7 @@ class LeggedRobot(BaseTask):
             # privileged information
             foot_contact,
             foot_air_time,
-            foot_ground_time,
+            phase_feet_ground_time,
             ladder_obs,
             self.friction_coeffs,
             self.base_added_mass,
@@ -847,7 +856,15 @@ class LeggedRobot(BaseTask):
         self.feet_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.feet_first_air = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
         self.feet_last_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.foot_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
+        self.phase_feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.phase_feet_first_contact = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
+        self.phase_feet_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.phase_feet_first_air = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
+        self.phase_feet_last_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.phase_foot_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
+        self.last_phase_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
@@ -887,16 +904,27 @@ class LeggedRobot(BaseTask):
         self._resample_pd_gains(torch.arange(self.num_envs, device=self.device))
 
     def _update_feet_air_time_state(self):
-        contact = self._get_foot_contacts()
-        contact_filt = torch.logical_or(contact, self.last_contacts)
+        self.foot_contacts = self._get_foot_contacts()
+        self.phase_foot_contacts = self._get_phase_foot_contacts()
+        contact_filt = torch.logical_or(self.foot_contacts, self.last_contacts)
         self.feet_first_contact = (self.feet_air_time > 0.) & contact_filt
-        self.feet_first_air = (self.feet_ground_time > 0.) & (~contact) & self.last_contacts
+        self.feet_first_air = (self.feet_ground_time > 0.) & (~self.foot_contacts) & self.last_contacts
         self.feet_last_ground_time = self.feet_ground_time * self.feet_first_air.float()
-        self.last_contacts = contact
+        self.last_contacts = self.foot_contacts
         self.feet_air_time += self.dt
         self.feet_air_time *= ~contact_filt
         self.feet_ground_time += self.dt
-        self.feet_ground_time *= contact.float()
+        self.feet_ground_time *= self.foot_contacts.float()
+
+        contact_filt = torch.logical_or(self.phase_foot_contacts, self.last_phase_contacts)
+        self.phase_feet_first_contact = (self.phase_feet_air_time > 0.) & contact_filt
+        self.phase_feet_first_air = (self.phase_feet_ground_time > 0.) & (~self.phase_foot_contacts) & self.last_phase_contacts
+        self.phase_feet_last_ground_time = self.phase_feet_ground_time * self.phase_feet_first_air.float()
+        self.last_phase_contacts = self.phase_foot_contacts
+        self.phase_feet_air_time += self.dt
+        self.phase_feet_air_time *= ~contact_filt
+        self.phase_feet_ground_time += self.dt
+        self.phase_feet_ground_time *= self.phase_foot_contacts.float()
 
     def _update_symmetry_torque_state(self):
         if not hasattr(self, "symmetry_joint_pair_indices"):
@@ -1400,6 +1428,9 @@ class LeggedRobot(BaseTask):
     def _get_foot_contacts(self):
         return self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.contact_force_threshold
 
+    def _get_phase_foot_contacts(self):
+        return self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.phase_contact_force_threshold
+
     def _reward_position_tracking(self):
         goal_reached, goal_dist = self._get_goal_delta()
         goal_dir = self.commands[:, :2] / goal_dist.unsqueeze(1).clamp(min=1e-6)
@@ -1445,16 +1476,16 @@ class LeggedRobot(BaseTask):
         goal_reached, _ = self._get_goal_delta()
         lower = self.cfg.rewards.half_phase_lower
         upper = self.cfg.rewards.half_phase_upper
-        ground_time = self.feet_last_ground_time
+        ground_time = self.phase_feet_last_ground_time
         ground_time_reward = torch.clamp(ground_time, max=upper) - lower
-        rew_ground_time = torch.sum(ground_time_reward * self.feet_first_air.float(), dim=1)
+        rew_ground_time = torch.sum(ground_time_reward * self.phase_feet_first_air.float(), dim=1)
         rew_ground_time *= (1. - goal_reached)
         return rew_ground_time
 
     def _reward_excess_feet_air_time(self):
-        contact = self._get_foot_contacts()
-        effective_air_time = self.feet_air_time + self.dt * (~contact).float()
-        exceeds_limit = (effective_air_time > self.cfg.rewards.half_phase_upper) & (~contact)
+        phase_contact = self._get_phase_foot_contacts()
+        effective_phase_air_time = self.phase_feet_air_time + self.dt * (~phase_contact).float()
+        exceeds_limit = (effective_phase_air_time > self.cfg.rewards.half_phase_upper) & (~phase_contact)
         rew_excess_air_time = torch.sum(exceeds_limit.float(), dim=1)
         return rew_excess_air_time
 
@@ -1469,8 +1500,15 @@ class LeggedRobot(BaseTask):
                 return torch.zeros(self.num_envs, device=self.device)
             matched_indices[leg_prefix] = self.foot_name_to_obs_index[matched_name]
         contact = self._get_foot_contacts()
-        fl_rr_match = (contact[:, matched_indices["FL"]] == contact[:, matched_indices["RR"]]).float()
-        fr_rl_match = (contact[:, matched_indices["FR"]] == contact[:, matched_indices["RL"]]).float()
+        phase_contact = self._get_phase_foot_contacts()
+        fl_rr_match = (
+            (contact[:, matched_indices["FL"]] == contact[:, matched_indices["RR"]]) &
+            (phase_contact[:, matched_indices["FL"]] == phase_contact[:, matched_indices["RR"]])
+        ).float()
+        fr_rl_match = (
+            (contact[:, matched_indices["FR"]] == contact[:, matched_indices["RL"]]) &
+            (phase_contact[:, matched_indices["FR"]] == phase_contact[:, matched_indices["RL"]])
+        ).float()
         pair_match = torch.stack((fl_rr_match, fr_rl_match), dim=1)
         return 2.0 * torch.mean(pair_match, dim=1) - 1.0
 
