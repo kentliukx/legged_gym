@@ -87,4 +87,5 @@ class GO2LadderCfg( LeggedRobotCfg ):
 class GO2LadderCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
         experiment_name = 'go2_ladder'
-        max_iterations = 5000 # number of policy updates
+        max_iterations = 10000 # number of policy updates
+        resume = False # resume from previous checkpoint

@@ -160,9 +160,8 @@ class LeggedRobotCfg(BaseConfig):
     class rewards:
         class scales:
             # Primary task rewards
-            alive = 2
+            alive = 3
             position_tracking = 3
-            heading_tracking = 0.5
 
             # Slow movement rewards
             lin_vel_z = -2
@@ -170,11 +169,12 @@ class LeggedRobotCfg(BaseConfig):
 
             # Shaping rewards
             flat_orientation_when_flat = -1.0
-            foot_slippage = -0.1
-            feet_air_time = 0.1
-            excess_feet_air_time = -3
+            foot_slippage = -0.2
+            feet_air_time = 0.2
+            excess_feet_air_time = -5
             contact_symmetry = 0.1
-            collision = -0.1
+            symmetry_torque = -0.005
+            collision = -1
             stand_still_when_reached_goal = -0.5
             stand_still_contact_when_reached_goal = -0.5
 
@@ -187,6 +187,7 @@ class LeggedRobotCfg(BaseConfig):
             dof_pos_limits = -5
 
             # Unused rewards
+            heading_tracking = 0
             termination = -0.0
             tracking_lin_vel = 0.0
             tracking_ang_vel = 0.0
@@ -205,6 +206,7 @@ class LeggedRobotCfg(BaseConfig):
         foot_slip_threshold = 1.0
         feet_air_time_threshold = 0.4
         feet_air_time_upper_limit = 0.8
+        symmetry_torque_lpf_tau = 0.2
         goal_radius = 0.15
         goal_speed_limit = 0.5
         progress_reward_max_difficulty_multiplier = 1.5

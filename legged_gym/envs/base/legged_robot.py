@@ -121,6 +121,7 @@ class LeggedRobot(BaseTask):
         self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
         self._update_feet_air_time_state()
+        self._update_symmetry_torque_state()
 
         self._post_physics_step_callback()
 
@@ -189,6 +190,8 @@ class LeggedRobot(BaseTask):
         self.last_dof_vel[env_ids] = 0.
         self.feet_air_time[env_ids] = 0.
         self.feet_first_contact[env_ids] = False
+        if hasattr(self, "filtered_symmetry_torque_abs_diff"):
+            self.filtered_symmetry_torque_abs_diff[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
         # fill extras
@@ -851,6 +854,12 @@ class LeggedRobot(BaseTask):
         self.base_force_local = torch.zeros(self.num_envs, 3, dtype=torch.float, device=self.device, requires_grad=False)
         self.base_torque_local = torch.zeros_like(self.base_force_local)
         self.base_force_torque_steps_remaining = 0
+        num_symmetry_pairs = int(self.symmetry_joint_pair_indices.shape[0]) if hasattr(self, "symmetry_joint_pair_indices") else 0
+        self.filtered_symmetry_torque_abs_diff = torch.zeros(
+            self.num_envs, num_symmetry_pairs, dtype=torch.float, device=self.device, requires_grad=False
+        )
+        symmetry_torque_lpf_tau = float(self.cfg.rewards.symmetry_torque_lpf_tau)
+        self.symmetry_torque_lpf_alpha = self.dt / (symmetry_torque_lpf_tau + self.dt) if symmetry_torque_lpf_tau > 0.0 else 1.0
         if self.cfg.terrain.measure_heights:
             self.height_points = self._init_height_points()
         self.measured_heights = 0
@@ -882,6 +891,19 @@ class LeggedRobot(BaseTask):
         self.last_contacts = contact
         self.feet_air_time += self.dt
         self.feet_air_time *= ~contact_filt
+
+    def _update_symmetry_torque_state(self):
+        if not hasattr(self, "symmetry_joint_pair_indices"):
+            return
+        if self.symmetry_joint_pair_indices.numel() == 0:
+            return
+        left_indices = self.symmetry_joint_pair_indices[:, 0]
+        right_indices = self.symmetry_joint_pair_indices[:, 1]
+        torque_abs_diff = torch.abs(
+            torch.abs(self.torques[:, left_indices]) - torch.abs(self.torques[:, right_indices])
+        )
+        alpha = self.symmetry_torque_lpf_alpha
+        self.filtered_symmetry_torque_abs_diff.mul_(1.0 - alpha).add_(alpha * torque_abs_diff)
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -999,6 +1021,26 @@ class LeggedRobot(BaseTask):
         self.dof_names = self.gym.get_asset_dof_names(robot_asset)
         self.num_bodies = len(body_names)
         self.num_dofs = len(self.dof_names)
+        self.dof_name_to_index = {name: i for i, name in enumerate(self.dof_names)}
+        symmetry_joint_pairs = [
+            ("FL_hip_joint", "FR_hip_joint"),
+            ("FL_thigh_joint", "FR_thigh_joint"),
+            ("FL_calf_joint", "FR_calf_joint"),
+            ("RL_hip_joint", "RR_hip_joint"),
+            ("RL_thigh_joint", "RR_thigh_joint"),
+            ("RL_calf_joint", "RR_calf_joint"),
+        ]
+        matched_symmetry_joint_pairs = [
+            [self.dof_name_to_index[left_name], self.dof_name_to_index[right_name]]
+            for left_name, right_name in symmetry_joint_pairs
+            if left_name in self.dof_name_to_index and right_name in self.dof_name_to_index
+        ]
+        if len(matched_symmetry_joint_pairs) > 0:
+            self.symmetry_joint_pair_indices = torch.tensor(
+                matched_symmetry_joint_pairs, dtype=torch.long, device=self.device
+            )
+        else:
+            self.symmetry_joint_pair_indices = torch.empty((0, 2), dtype=torch.long, device=self.device)
         feet_names = [s for s in body_names if self.cfg.asset.foot_name in s]
         penalized_contact_names = []
         for name in self.cfg.asset.penalize_contacts_on:
@@ -1415,6 +1457,13 @@ class LeggedRobot(BaseTask):
         fr_rl_match = (contact[:, matched_indices["FR"]] == contact[:, matched_indices["RL"]]).float()
         pair_match = torch.stack((fl_rr_match, fr_rl_match), dim=1)
         return 2.0 * torch.mean(pair_match, dim=1) - 1.0
+
+    def _reward_symmetry_torque(self):
+        if not hasattr(self, "filtered_symmetry_torque_abs_diff"):
+            return torch.zeros(self.num_envs, device=self.device)
+        if self.filtered_symmetry_torque_abs_diff.shape[1] == 0:
+            return torch.zeros(self.num_envs, device=self.device)
+        return torch.sum(self.filtered_symmetry_torque_abs_diff, dim=1)
     
     def _reward_stumble(self):
         # Penalize feet hitting vertical surfaces
