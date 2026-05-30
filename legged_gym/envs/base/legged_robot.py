@@ -190,6 +190,9 @@ class LeggedRobot(BaseTask):
         self.last_dof_vel[env_ids] = 0.
         self.feet_air_time[env_ids] = 0.
         self.feet_first_contact[env_ids] = False
+        self.feet_ground_time[env_ids] = 0.
+        self.feet_first_air[env_ids] = False
+        self.feet_last_ground_time[env_ids] = 0.
         if hasattr(self, "filtered_symmetry_torque_abs_diff"):
             self.filtered_symmetry_torque_abs_diff[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
@@ -297,6 +300,7 @@ class LeggedRobot(BaseTask):
         ladder_obs = self._get_ladder_observations()
         foot_contact = self._get_foot_contacts().float()
         foot_air_time = self.feet_air_time
+        foot_ground_time = self.feet_ground_time
         height_scan = torch.clip(
                 self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1) * self.obs_scales.height_measurements
 
@@ -315,6 +319,7 @@ class LeggedRobot(BaseTask):
             # privileged information
             foot_contact,
             foot_air_time,
+            foot_ground_time,
             ladder_obs,
             self.friction_coeffs,
             self.base_added_mass,
@@ -733,7 +738,9 @@ class LeggedRobot(BaseTask):
         noise_vec[contact_obs_start:contact_obs_start + len(self.feet_indices)] = 0. # foot contact flags
         foot_air_time_start = contact_obs_start + len(self.feet_indices)
         noise_vec[foot_air_time_start:foot_air_time_start + len(self.feet_indices)] = 0. # foot air time
-        ladder_obs_start = foot_air_time_start + len(self.feet_indices)
+        foot_ground_time_start = foot_air_time_start + len(self.feet_indices)
+        noise_vec[foot_ground_time_start:foot_ground_time_start + len(self.feet_indices)] = 0. # foot ground time
+        ladder_obs_start = foot_ground_time_start + len(self.feet_indices)
         noise_vec[ladder_obs_start:ladder_obs_start + 4] = 0. # ladder geometry
         num_height_obs = len(self.cfg.terrain.measured_points_x) * len(self.cfg.terrain.measured_points_y) if self.cfg.terrain.measure_heights else 0
         if self.cfg.terrain.measure_heights:
@@ -831,12 +838,15 @@ class LeggedRobot(BaseTask):
             self.terrain_ladder_mask = torch.from_numpy(self.terrain.ladder_mask).to(self.device)
             self.terrain_ladder_bar_spacing = torch.from_numpy(self.terrain.ladder_bar_spacing).to(self.device).to(torch.float)
             self.terrain_ladder_angles = torch.from_numpy(self.terrain.ladder_angles).to(self.device).to(torch.float)
-            self.goal_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
-            self.goal_targets[:, 2] += self.cfg.rewards.base_height_target
-            self._randomize_rough_targets(torch.arange(self.num_envs, device=self.device))
-            self._reset_goal_progress(torch.arange(self.num_envs, device=self.device))
+        self.goal_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
+        self.goal_targets[:, 2] += self.cfg.rewards.base_height_target
+        self._randomize_rough_targets(torch.arange(self.num_envs, device=self.device))
+        self._reset_goal_progress(torch.arange(self.num_envs, device=self.device))
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.feet_first_contact = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
+        self.feet_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.feet_first_air = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
+        self.feet_last_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
@@ -880,9 +890,13 @@ class LeggedRobot(BaseTask):
         contact = self._get_foot_contacts()
         contact_filt = torch.logical_or(contact, self.last_contacts)
         self.feet_first_contact = (self.feet_air_time > 0.) & contact_filt
+        self.feet_first_air = (self.feet_ground_time > 0.) & (~contact) & self.last_contacts
+        self.feet_last_ground_time = self.feet_ground_time * self.feet_first_air.float()
         self.last_contacts = contact
         self.feet_air_time += self.dt
         self.feet_air_time *= ~contact_filt
+        self.feet_ground_time += self.dt
+        self.feet_ground_time *= contact.float()
 
     def _update_symmetry_torque_state(self):
         if not hasattr(self, "symmetry_joint_pair_indices"):
@@ -1420,17 +1434,27 @@ class LeggedRobot(BaseTask):
         # Reward moderate air time and penalize overly long swing time.
         goal_reached, _ = self._get_goal_delta()
         air_time = self.feet_air_time + self.dt * self.feet_first_contact.float()
-        lower = self.cfg.rewards.feet_air_time_threshold
-        upper = self.cfg.rewards.feet_air_time_upper_limit
+        lower = self.cfg.rewards.half_phase_lower
+        upper = self.cfg.rewards.half_phase_upper
         air_time_reward = torch.clamp(air_time, max=upper) - lower
         rew_airTime = torch.sum(air_time_reward * self.feet_first_contact.float(), dim=1) # reward only on first contact with the ground
         rew_airTime *= (1. - goal_reached)
         return rew_airTime
 
+    def _reward_feet_ground_time(self):
+        goal_reached, _ = self._get_goal_delta()
+        lower = self.cfg.rewards.half_phase_lower
+        upper = self.cfg.rewards.half_phase_upper
+        ground_time = self.feet_last_ground_time
+        ground_time_reward = torch.clamp(ground_time, max=upper) - lower
+        rew_ground_time = torch.sum(ground_time_reward * self.feet_first_air.float(), dim=1)
+        rew_ground_time *= (1. - goal_reached)
+        return rew_ground_time
+
     def _reward_excess_feet_air_time(self):
         contact = self._get_foot_contacts()
         effective_air_time = self.feet_air_time + self.dt * (~contact).float()
-        exceeds_limit = (effective_air_time > self.cfg.rewards.feet_air_time_upper_limit) & (~contact)
+        exceeds_limit = (effective_air_time > self.cfg.rewards.half_phase_upper) & (~contact)
         rew_excess_air_time = torch.sum(exceeds_limit.float(), dim=1)
         return rew_excess_air_time
 
