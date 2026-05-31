@@ -190,16 +190,22 @@ class LeggedRobot(BaseTask):
         self.last_dof_vel[env_ids] = 0.
         self.feet_air_time[env_ids] = 0.
         self.feet_first_contact[env_ids] = False
+        self.feet_last_air_time[env_ids] = 0.
+        self.min_feet_last_air_time[env_ids] = 0.
         self.feet_ground_time[env_ids] = 0.
         self.feet_first_air[env_ids] = False
         self.feet_last_ground_time[env_ids] = 0.
+        self.min_feet_last_ground_time[env_ids] = 0.
         self.foot_contacts[env_ids] = False
         self.last_contacts[env_ids] = False
         self.phase_feet_air_time[env_ids] = 0.
         self.phase_feet_first_contact[env_ids] = False
+        self.phase_feet_last_air_time[env_ids] = 0.
+        self.min_phase_feet_last_air_time[env_ids] = 0.
         self.phase_feet_ground_time[env_ids] = 0.
         self.phase_feet_first_air[env_ids] = False
         self.phase_feet_last_ground_time[env_ids] = 0.
+        self.min_phase_feet_last_ground_time[env_ids] = 0.
         self.phase_foot_contacts[env_ids] = False
         self.last_phase_contacts[env_ids] = False
         if hasattr(self, "filtered_symmetry_torque_abs_diff"):
@@ -853,16 +859,22 @@ class LeggedRobot(BaseTask):
         self._reset_goal_progress(torch.arange(self.num_envs, device=self.device))
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.feet_first_contact = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
+        self.feet_last_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.min_feet_last_air_time = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         self.feet_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.feet_first_air = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
         self.feet_last_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.min_feet_last_ground_time = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         self.foot_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.phase_feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.phase_feet_first_contact = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
+        self.phase_feet_last_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.min_phase_feet_last_air_time = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         self.phase_feet_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.phase_feet_first_air = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
         self.phase_feet_last_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.min_phase_feet_last_ground_time = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         self.phase_foot_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.last_phase_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
@@ -906,25 +918,65 @@ class LeggedRobot(BaseTask):
     def _update_feet_air_time_state(self):
         self.foot_contacts = self._get_foot_contacts()
         self.phase_foot_contacts = self._get_phase_foot_contacts()
-        contact_filt = torch.logical_or(self.foot_contacts, self.last_contacts)
-        self.feet_first_contact = (self.feet_air_time > 0.) & contact_filt
-        self.feet_first_air = (self.feet_ground_time > 0.) & (~self.foot_contacts) & self.last_contacts
-        self.feet_last_ground_time = self.feet_ground_time * self.feet_first_air.float()
-        self.last_contacts = self.foot_contacts
-        self.feet_air_time += self.dt
-        self.feet_air_time *= ~contact_filt
-        self.feet_ground_time += self.dt
-        self.feet_ground_time *= self.foot_contacts.float()
 
-        contact_filt = torch.logical_or(self.phase_foot_contacts, self.last_phase_contacts)
-        self.phase_feet_first_contact = (self.phase_feet_air_time > 0.) & contact_filt
+        current_feet_air_time = self.feet_air_time + self.dt
+        current_feet_ground_time = self.feet_ground_time + self.dt
+        current_phase_feet_air_time = self.phase_feet_air_time + self.dt
+        current_phase_feet_ground_time = self.phase_feet_ground_time + self.dt
+
+        self.feet_first_contact = (self.feet_air_time > 0.) & self.foot_contacts & (~self.last_contacts)
+        self.feet_last_air_time = torch.where(
+            self.feet_first_contact,
+            self.feet_air_time,
+            self.feet_last_air_time,
+        )
+        self.feet_first_air = (self.feet_ground_time > 0.) & (~self.foot_contacts) & self.last_contacts
+        self.feet_last_ground_time = torch.where(
+            self.feet_first_air,
+            self.feet_ground_time,
+            self.feet_last_ground_time,
+        )
+        self.last_contacts = self.foot_contacts
+        self.feet_air_time = current_feet_air_time * (~self.foot_contacts).float()
+        self.feet_ground_time = current_feet_ground_time * self.foot_contacts.float()
+        self.min_feet_last_air_time = self._update_min_valid_last_time(
+            self.feet_last_air_time,
+            self.min_feet_last_air_time,
+        )
+        self.min_feet_last_ground_time = self._update_min_valid_last_time(
+            self.feet_last_ground_time,
+            self.min_feet_last_ground_time,
+        )
+
+        self.phase_feet_first_contact = (self.phase_feet_air_time > 0.) & self.phase_foot_contacts & (~self.last_phase_contacts)
+        self.phase_feet_last_air_time = torch.where(
+            self.phase_feet_first_contact,
+            self.phase_feet_air_time,
+            self.phase_feet_last_air_time,
+        )
         self.phase_feet_first_air = (self.phase_feet_ground_time > 0.) & (~self.phase_foot_contacts) & self.last_phase_contacts
-        self.phase_feet_last_ground_time = self.phase_feet_ground_time * self.phase_feet_first_air.float()
+        self.phase_feet_last_ground_time = torch.where(
+            self.phase_feet_first_air,
+            self.phase_feet_ground_time,
+            self.phase_feet_last_ground_time,
+        )
         self.last_phase_contacts = self.phase_foot_contacts
-        self.phase_feet_air_time += self.dt
-        self.phase_feet_air_time *= ~contact_filt
-        self.phase_feet_ground_time += self.dt
-        self.phase_feet_ground_time *= self.phase_foot_contacts.float()
+        self.phase_feet_air_time = current_phase_feet_air_time * (~self.phase_foot_contacts).float()
+        self.phase_feet_ground_time = current_phase_feet_ground_time * self.phase_foot_contacts.float()
+        self.min_phase_feet_last_air_time = self._update_min_valid_last_time(
+            self.phase_feet_last_air_time,
+            self.min_phase_feet_last_air_time,
+        )
+        self.min_phase_feet_last_ground_time = self._update_min_valid_last_time(
+            self.phase_feet_last_ground_time,
+            self.min_phase_feet_last_ground_time,
+        )
+
+    def _update_min_valid_last_time(self, last_time_tensor, current_min_tensor):
+        valid_mask = last_time_tensor > 0.
+        masked = torch.where(valid_mask, last_time_tensor, torch.full_like(last_time_tensor, float("inf")))
+        min_vals = torch.min(masked, dim=1).values
+        return torch.where(torch.isinf(min_vals), current_min_tensor, min_vals)
 
     def _update_symmetry_torque_state(self):
         if not hasattr(self, "symmetry_joint_pair_indices"):
@@ -1464,10 +1516,9 @@ class LeggedRobot(BaseTask):
     def _reward_feet_air_time(self):
         # Reward moderate air time and penalize overly long swing time.
         goal_reached, _ = self._get_goal_delta()
-        air_time = self.feet_air_time + self.dt * self.feet_first_contact.float()
         lower = self.cfg.rewards.half_phase_lower
         upper = self.cfg.rewards.half_phase_upper
-        air_time_reward = torch.clamp(air_time, max=upper) - lower
+        air_time_reward = torch.clamp(self.feet_last_air_time, max=upper) - lower
         rew_airTime = torch.sum(air_time_reward * self.feet_first_contact.float(), dim=1) # reward only on first contact with the ground
         rew_airTime *= (1. - goal_reached)
         return rew_airTime
