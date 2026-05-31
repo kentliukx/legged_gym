@@ -173,7 +173,7 @@ class LeggedRobotCfg(BaseConfig):
             feet_air_time = 0.5
             feet_ground_time = 0.5
             excess_feet_air_time = -5
-            contact_symmetry = 0.2
+            contact_symmetry = 0.1
             collision = -1
             stand_still_when_reached_goal = -0.5
             stand_still_contact_when_reached_goal = -0.5
@@ -212,7 +212,7 @@ class LeggedRobotCfg(BaseConfig):
         goal_speed_limit = 0.5
         progress_reward_max_difficulty_multiplier = 1.5
         contact_force_threshold = 1.0
-        phase_contact_force_threshold = 50.0
+        phase_contact_force_threshold = 20.0
         flat_height_std_threshold = 0.2
 
     class normalization:
