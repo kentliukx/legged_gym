@@ -1517,7 +1517,7 @@ class LeggedRobot(BaseTask):
         # Reward moderate air time and penalize overly long swing time.
         goal_reached, _ = self._get_goal_delta()
         lower = self.cfg.rewards.half_phase_lower
-        upper = self.cfg.rewards.half_phase_upper
+        upper = torch.clamp(self.min_feet_last_air_time, max=self.cfg.rewards.half_phase_upper).unsqueeze(1)
         air_time_reward = torch.clamp(self.feet_last_air_time, max=upper) - lower
         rew_airTime = torch.sum(air_time_reward * self.feet_first_contact.float(), dim=1) # reward only on first contact with the ground
         rew_airTime *= (1. - goal_reached)
@@ -1526,9 +1526,8 @@ class LeggedRobot(BaseTask):
     def _reward_feet_ground_time(self):
         goal_reached, _ = self._get_goal_delta()
         lower = self.cfg.rewards.half_phase_lower
-        upper = self.cfg.rewards.half_phase_upper
-        ground_time = self.phase_feet_last_ground_time
-        ground_time_reward = torch.clamp(ground_time, max=upper) - lower
+        upper = torch.clamp(self.min_phase_feet_last_ground_time, max=self.cfg.rewards.half_phase_upper).unsqueeze(1)
+        ground_time_reward = torch.clamp(self.phase_feet_last_ground_time, max=upper) - lower
         rew_ground_time = torch.sum(ground_time_reward * self.phase_feet_first_air.float(), dim=1)
         rew_ground_time *= (1. - goal_reached)
         return rew_ground_time
