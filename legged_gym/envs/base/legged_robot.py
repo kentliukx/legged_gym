@@ -1454,7 +1454,10 @@ class LeggedRobot(BaseTask):
     def _get_flat_terrain_mask(self):
         if not self.cfg.terrain.measure_heights:
             return torch.ones(self.num_envs, device=self.device)
-        local_height_std = torch.std(self.measured_heights, dim=1, unbiased=False)
+        x_coords = self.height_points[0, :, 0]
+        front_back_mask = x_coords > -0.1
+        selected_heights = self.measured_heights[:, front_back_mask]
+        local_height_std = torch.std(selected_heights, dim=1, unbiased=False)
         return (local_height_std < self.cfg.rewards.flat_height_std_threshold).float()
 
     def _update_difficulty(self, env_ids=None):

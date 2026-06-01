@@ -213,7 +213,7 @@ class LeggedRobotCfg(BaseConfig):
         progress_reward_max_difficulty_multiplier = 1.5
         contact_force_threshold = 1.0
         phase_contact_force_threshold = 20.0
-        flat_height_std_threshold = 0.2
+        flat_height_std_threshold = 0.1
 
     class normalization:
         class obs_scales:
