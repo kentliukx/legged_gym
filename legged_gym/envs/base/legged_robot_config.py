@@ -63,6 +63,7 @@ class LeggedRobotCfg(BaseConfig):
                              0.08, 0.16, 0.24, 0.32, 0.4]
         terrain_kwargs = {
             "bar_mesh_file": "{LEGGED_GYM_ROOT_DIR}/resources/terrains/round_bar.STL",
+            "side_bar_mesh_file": "{LEGGED_GYM_ROOT_DIR}/resources/terrains/side_bar.STL",
             "bar_spacing": (0.15, 0.25),
             "bar_count": (10, 14),
             "ladder_angle": (10, 80),

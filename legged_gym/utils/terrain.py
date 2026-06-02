@@ -101,6 +101,7 @@ class Terrain:
 
     def _selected_ladder_bars_terrain(self,
                                       bar_mesh_file,
+                                      side_bar_mesh_file,
                                       bar_spacing=0.3,
                                       bar_count=10,
                                       ladder_angle=0.0,
@@ -116,9 +117,11 @@ class Terrain:
                                       low_difficulty_probability=0.0,
                                       rough_height_range=(0.02, 0.08),
                                       rough_grid_size=0.1,
+                                      add_side_rails=True,
                                       difficulty=1.0,
                                       ):
         bar_vertices, bar_triangles = load_stl_mesh(bar_mesh_file)
+        side_bar_vertices, side_bar_triangles = load_stl_mesh(side_bar_mesh_file)
         all_vertices = []
         all_triangles = []
         vertex_offset = 0
@@ -152,7 +155,7 @@ class Terrain:
                 tile_ladder_angle = _lerp_range(ladder_angle, row_difficulty)
                 self.ladder_bar_spacing[i, j] = tile_bar_spacing
                 self.ladder_angles[i, j] = tile_ladder_angle
-                bar_centers, prepared_bar_vertices, local_vertices, local_triangles, platform_center = generate_ladder_bar_mesh(
+                bar_centers, prepared_bar_vertices, side_bar_segments, side_bar_radius_xy, local_vertices, local_triangles, platform_center = generate_ladder_bar_mesh(
                     env_length=self.env_length,
                     env_width=self.env_width,
                     difficulty=row_difficulty,
@@ -169,8 +172,11 @@ class Terrain:
                     platform_width=platform_width,
                     platform_gap=platform_gap,
                     x_offset=ladder_x_offset,
+                    add_side_rails=add_side_rails,
                     bar_vertices=bar_vertices,
-                    bar_triangles=bar_triangles)
+                    bar_triangles=bar_triangles,
+                    side_bar_vertices=side_bar_vertices,
+                    side_bar_triangles=side_bar_triangles)
                 ladder_origin = np.asarray(
                     [self.env_length * 0.5 + ladder_x_offset, self.env_width * 0.5, 0.0],
                     dtype=np.float32,
@@ -185,6 +191,8 @@ class Terrain:
                     num_cols=self.obs_width_per_env_pixels,
                     bar_centers=bar_centers,
                     bar_vertices=prepared_bar_vertices,
+                    rail_segments=side_bar_segments,
+                    rail_radius_xy=side_bar_radius_xy,
                     platform_length=platform_length,
                     platform_width=platform_width,
                     platform_gap=platform_gap)
@@ -246,6 +254,8 @@ def rasterize_ladder_bars(horizontal_scale,
                           num_cols,
                           bar_centers,
                           bar_vertices,
+                          rail_segments=None,
+                          rail_radius_xy=0.0,
                           platform_length=1.0,
                           platform_width=1.2,
                           platform_gap=0.1,
@@ -267,6 +277,17 @@ def rasterize_ladder_bars(horizontal_scale,
 
         height_value = int(np.round(center[2] / vertical_scale))
         height_field[min_x:max_x + 1, min_y:max_y + 1] = height_value
+
+    if rail_segments is not None:
+        for start, end in rail_segments:
+            _fill_segment_height(
+                height_field,
+                horizontal_scale=horizontal_scale,
+                vertical_scale=vertical_scale,
+                start=np.asarray(start, dtype=np.float32),
+                end=np.asarray(end, dtype=np.float32),
+                radius_xy=float(rail_radius_xy),
+            )
 
     _fill_platform_height(
         height_field,
@@ -295,8 +316,11 @@ def generate_ladder_bar_mesh(env_length,
                              platform_width=1.2,
                              platform_gap=0.1,
                              x_offset=0.0,
+                             add_side_rails=True,
                              bar_vertices=None,
-                             bar_triangles=None
+                             bar_triangles=None,
+                             side_bar_vertices=None,
+                             side_bar_triangles=None,
                              ):
 
     center_x = env_length * 0.5 + x_offset
@@ -322,7 +346,8 @@ def generate_ladder_bar_mesh(env_length,
     triangles = []
 
     # Center the imported STL once. Every rung is just this mesh translated.
-    prepared_bar_vertices = _prepare_bar_mesh(bar_vertices)
+    base_bar_vertices = _prepare_bar_mesh(bar_vertices)
+    prepared_bar_vertices = np.copy(base_bar_vertices)
     prepared_bar_vertices[:, 0] *= bar_x_scale
     prepared_bar_vertices[:, 1] *= bar_y_scale
     bar_centers = _compute_bar_centers(
@@ -338,6 +363,24 @@ def generate_ladder_bar_mesh(env_length,
             bar_vertices=prepared_bar_vertices,
             bar_triangles=bar_triangles,
             center=center)
+    side_bar_segments = []
+    prepared_side_bar_vertices = _prepare_bar_mesh(side_bar_vertices)
+    side_bar_mesh_vertices = np.copy(prepared_side_bar_vertices)
+    side_bar_radius_xy = _estimate_mesh_radius_xy(side_bar_mesh_vertices)
+    if add_side_rails and bar_centers.shape[0] >= 2:
+        side_bar_segments = _compute_side_rails(
+            bar_centers,
+            rung_vertices=prepared_bar_vertices,
+        )
+        for start, end in side_bar_segments:
+            _append_oriented_bar_mesh(
+                vertices,
+                triangles,
+                bar_vertices=side_bar_mesh_vertices,
+                bar_triangles=side_bar_triangles,
+                start=start,
+                end=end,
+            )
     _append_platform_mesh(
         vertices,
         triangles,
@@ -353,7 +396,15 @@ def generate_ladder_bar_mesh(env_length,
         platform_top_z,
     ], dtype=np.float32)
 
-    return bar_centers, prepared_bar_vertices, np.asarray(vertices, dtype=np.float32), np.asarray(triangles, dtype=np.uint32), platform_center
+    return (
+        bar_centers,
+        prepared_bar_vertices,
+        side_bar_segments,
+        side_bar_radius_xy,
+        np.asarray(vertices, dtype=np.float32),
+        np.asarray(triangles, dtype=np.uint32),
+        platform_center,
+    )
 
 
 def generate_random_rough_height_fields(env_length,
@@ -583,6 +634,37 @@ def _append_prepared_bar_mesh(vertices,
     triangles.extend((bar_triangles + base_idx).tolist())
 
 
+def _append_oriented_bar_mesh(vertices,
+                              triangles,
+                              bar_vertices,
+                              bar_triangles,
+                              start,
+                              end):
+    start = np.asarray(start, dtype=np.float32)
+    end = np.asarray(end, dtype=np.float32)
+    direction = end - start
+    length = np.linalg.norm(direction)
+    if length <= 1e-6:
+        return
+
+    local_vertices = np.copy(bar_vertices)
+    local_y_min = np.min(local_vertices[:, 1])
+    local_y_max = np.max(local_vertices[:, 1])
+    local_length = local_y_max - local_y_min
+    if local_length <= 1e-6:
+        return
+
+    local_vertices[:, 1] *= length / local_length
+    ladder_pitch = float(np.arctan2(direction[2], direction[0]))
+    rotation = _build_side_bar_euler_zyx(ladder_pitch)
+    transformed = local_vertices @ rotation.T
+    transformed += 0.5 * (start + end)
+
+    base_idx = len(vertices)
+    vertices.extend(transformed.tolist())
+    triangles.extend((bar_triangles + base_idx).tolist())
+
+
 def _prepare_bar_mesh(vertices):
     prepared = np.copy(vertices).astype(np.float32)
     mins = prepared.min(axis=0)
@@ -591,6 +673,62 @@ def _prepare_bar_mesh(vertices):
     prepared[:, 1] -= (mins[1] + maxs[1]) * 0.5
     prepared[:, 2] -= (mins[2] + maxs[2]) * 0.5
     return prepared
+
+
+def _build_side_bar_euler_zyx(ladder_pitch):
+    rot_z = np.array([
+        [0.0, 1.0, 0.0],
+        [-1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+    ], dtype=np.float32)
+    cos_x = float(np.cos(ladder_pitch))
+    sin_x = float(np.sin(ladder_pitch))
+    rot_x = np.array([
+        [1.0, 0.0, 0.0],
+        [0.0, cos_x, -sin_x],
+        [0.0, sin_x, cos_x],
+    ], dtype=np.float32)
+    return (rot_z @ rot_x).astype(np.float32)
+
+
+def _estimate_mesh_radius_xy(bar_vertices):
+    x_radius = 0.5 * (np.max(bar_vertices[:, 0]) - np.min(bar_vertices[:, 0]))
+    z_radius = 0.5 * (np.max(bar_vertices[:, 2]) - np.min(bar_vertices[:, 2]))
+    return float(max(x_radius, z_radius))
+
+
+def _compute_side_rails(bar_centers, rung_vertices):
+    y_radius = 0.5 * (np.max(rung_vertices[:, 1]) - np.min(rung_vertices[:, 1]))
+    step_vector = bar_centers[1] - bar_centers[0]
+    left_offset = np.array([0.0, -y_radius, 0.0], dtype=np.float32)
+    right_offset = np.array([0.0, y_radius, 0.0], dtype=np.float32)
+    return [
+        (bar_centers[0] - step_vector + left_offset, bar_centers[-1] + step_vector + left_offset),
+        (bar_centers[0] - step_vector + right_offset, bar_centers[-1] + step_vector + right_offset),
+    ]
+
+
+def _fill_segment_height(height_field,
+                         horizontal_scale,
+                         vertical_scale,
+                         start,
+                         end,
+                         radius_xy):
+    segment = end - start
+    planar_length = np.linalg.norm(segment[:2])
+    num_samples = max(2, int(np.ceil(planar_length / max(horizontal_scale * 0.5, 1e-6))) + 1)
+    radius_cells = max(0, int(np.ceil(radius_xy / horizontal_scale)))
+
+    for t in np.linspace(0.0, 1.0, num_samples, dtype=np.float32):
+        point = start + t * segment
+        cx = int(np.round(point[0] / horizontal_scale))
+        cy = int(np.round(point[1] / horizontal_scale))
+        min_x = max(0, cx - radius_cells)
+        max_x = min(height_field.shape[0] - 1, cx + radius_cells)
+        min_y = max(0, cy - radius_cells)
+        max_y = min(height_field.shape[1] - 1, cy + radius_cells)
+        height_value = int(np.round(point[2] / vertical_scale))
+        height_field[min_x:max_x + 1, min_y:max_y + 1] = height_value
 
 
 def _lerp_range(value_range, difficulty):
