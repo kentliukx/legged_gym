@@ -68,6 +68,8 @@ class LeggedRobotCfg(BaseConfig):
             "ladder_angle": (10, 80),
             "bar_x_scale": (3.0, 1.0),
             "bar_x_scale_min_level": 5,
+            "bar_y_scale": (2.0, 1.0),
+            "bar_y_scale_min_level": 3,
             "platform_length": 2,
             "platform_width": 2,
             "platform_gap": 0.1,

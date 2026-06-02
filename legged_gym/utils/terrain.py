@@ -106,6 +106,8 @@ class Terrain:
                                       ladder_angle=0.0,
                                       bar_x_scale=(3.0, 1.0),
                                       bar_x_scale_min_level=None,
+                                      bar_y_scale=1.0,
+                                      bar_y_scale_min_level=None,
                                       platform_length=1.0,
                                       platform_width=1.2,
                                       platform_gap=0.1,
@@ -161,6 +163,8 @@ class Terrain:
                     ladder_angle=tile_ladder_angle,
                     bar_x_scale=bar_x_scale,
                     bar_x_scale_min_level=bar_x_scale_min_level,
+                    bar_y_scale=bar_y_scale,
+                    bar_y_scale_min_level=bar_y_scale_min_level,
                     platform_length=platform_length,
                     platform_width=platform_width,
                     platform_gap=platform_gap,
@@ -285,6 +289,8 @@ def generate_ladder_bar_mesh(env_length,
                              ladder_angle=0.0,
                              bar_x_scale=(3.0, 1.0),
                              bar_x_scale_min_level=None,
+                             bar_y_scale=1.0,
+                             bar_y_scale_min_level=None,
                              platform_length=1.0,
                              platform_width=1.2,
                              platform_gap=0.1,
@@ -305,6 +311,12 @@ def generate_ladder_bar_mesh(env_length,
         max_ladder_level=max_ladder_level,
         min_value_level=bar_x_scale_min_level,
     )
+    bar_y_scale = _lerp_range_by_level(
+        bar_y_scale,
+        ladder_level=ladder_level,
+        max_ladder_level=max_ladder_level,
+        min_value_level=bar_y_scale_min_level,
+    )
 
     vertices = []
     triangles = []
@@ -312,6 +324,7 @@ def generate_ladder_bar_mesh(env_length,
     # Center the imported STL once. Every rung is just this mesh translated.
     prepared_bar_vertices = _prepare_bar_mesh(bar_vertices)
     prepared_bar_vertices[:, 0] *= bar_x_scale
+    prepared_bar_vertices[:, 1] *= bar_y_scale
     bar_centers = _compute_bar_centers(
         center_x=center_x,
         center_y=center_y,
