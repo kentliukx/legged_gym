@@ -73,6 +73,7 @@ class Terrain:
         self.ladder_mask = np.ones((cfg.num_rows, self.num_cols), dtype=np.bool_)
         self.ladder_bar_spacing = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
         self.ladder_angles = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
+        self.ladder_bar_y_scales = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
 
         self.obs_horizontal_scale = getattr(cfg, "obs_horizontal_scale", cfg.horizontal_scale)
 
@@ -120,9 +121,10 @@ class Terrain:
                                       rough_grid_size=0.1,
                                       add_side_rails=True,
                                       difficulty=1.0,
-                                      ):
+        ):
         bar_vertices, bar_triangles = load_stl_mesh(bar_mesh_file)
         side_bar_vertices, side_bar_triangles = load_stl_mesh(side_bar_mesh_file)
+        max_bar_y_scale = _range_max(bar_y_scale)
         all_vertices = []
         all_triangles = []
         vertex_offset = 0
@@ -139,6 +141,7 @@ class Terrain:
             if is_rough:
                 self.ladder_bar_spacing[i, j] = tile_bar_spacing
                 self.ladder_angles[i, j] = 0.0
+                self.ladder_bar_y_scales[i, j] = max_bar_y_scale
                 local_physics_height_field = np.zeros(
                     (self.length_per_env_pixels, self.width_per_env_pixels),
                     dtype=np.int16)
@@ -156,7 +159,7 @@ class Terrain:
                 tile_ladder_angle = _lerp_range(ladder_angle, row_difficulty)
                 self.ladder_bar_spacing[i, j] = tile_bar_spacing
                 self.ladder_angles[i, j] = tile_ladder_angle
-                bar_centers, prepared_bar_vertices, side_bar_segments, side_bar_radius_xy, local_vertices, local_triangles, platform_center = generate_ladder_bar_mesh(
+                bar_centers, prepared_bar_vertices, side_bar_segments, side_bar_radius_xy, tile_bar_y_scale, local_vertices, local_triangles, platform_center = generate_ladder_bar_mesh(
                     env_length=self.env_length,
                     env_width=self.env_width,
                     difficulty=row_difficulty,
@@ -179,6 +182,7 @@ class Terrain:
                     bar_triangles=bar_triangles,
                     side_bar_vertices=side_bar_vertices,
                     side_bar_triangles=side_bar_triangles)
+                self.ladder_bar_y_scales[i, j] = tile_bar_y_scale
                 ladder_origin = np.asarray(
                     [self.env_length * 0.5 + ladder_x_offset, self.env_width * 0.5, 0.0],
                     dtype=np.float32,
@@ -405,6 +409,7 @@ def generate_ladder_bar_mesh(env_length,
         prepared_bar_vertices,
         side_bar_segments,
         side_bar_radius_xy,
+        bar_y_scale,
         np.asarray(vertices, dtype=np.float32),
         np.asarray(triangles, dtype=np.uint32),
         platform_center,
@@ -771,6 +776,14 @@ def _sample_range(value_range):
     low = min(value_range[0], value_range[1])
     high = max(value_range[0], value_range[1])
     return float(np.random.uniform(low, high))
+
+
+def _range_max(value_range):
+    if np.isscalar(value_range):
+        return float(value_range)
+    if len(value_range) != 2:
+        raise ValueError("range values must be scalars or two-element sequences")
+    return float(max(value_range[0], value_range[1]))
 
 
 def load_stl_mesh(mesh_file):

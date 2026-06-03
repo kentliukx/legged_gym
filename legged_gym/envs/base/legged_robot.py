@@ -756,10 +756,10 @@ class LeggedRobot(BaseTask):
         foot_ground_time_start = foot_air_time_start + len(self.feet_indices)
         noise_vec[foot_ground_time_start:foot_ground_time_start + len(self.feet_indices)] = 0. # foot ground time
         ladder_obs_start = foot_ground_time_start + len(self.feet_indices)
-        noise_vec[ladder_obs_start:ladder_obs_start + 4] = 0. # ladder geometry
+        noise_vec[ladder_obs_start:ladder_obs_start + 5] = 0. # ladder geometry
         num_height_obs = len(self.cfg.terrain.measured_points_x) * len(self.cfg.terrain.measured_points_y) if self.cfg.terrain.measure_heights else 0
         if self.cfg.terrain.measure_heights:
-            domain_rand_obs_start = ladder_obs_start + 4
+            domain_rand_obs_start = ladder_obs_start + 5
             noise_vec[domain_rand_obs_start:domain_rand_obs_start + 10] = 0. # domain rand + wrench
             height_obs_start = domain_rand_obs_start + 10
             noise_vec[height_obs_start:height_obs_start + num_height_obs] = (
@@ -768,14 +768,17 @@ class LeggedRobot(BaseTask):
         return noise_vec
 
     def _get_ladder_observations(self):
-        ladder_obs = torch.zeros(self.num_envs, 4, device=self.device, dtype=torch.float)
+        ladder_obs = torch.zeros(self.num_envs, 5, device=self.device, dtype=torch.float)
         if self.cfg.terrain.mesh_type not in ['heightfield', 'trimesh']:
             return ladder_obs
-        if not hasattr(self, "terrain_ladder_bar_spacing") or not hasattr(self, "terrain_ladder_angles"):
+        if (not hasattr(self, "terrain_ladder_bar_spacing")
+                or not hasattr(self, "terrain_ladder_angles")
+                or not hasattr(self, "terrain_ladder_bar_y_scales")):
             return ladder_obs
 
         bar_spacing = self.terrain_ladder_bar_spacing[self.terrain_levels, self.terrain_types]
         ladder_angle_deg = self.terrain_ladder_angles[self.terrain_levels, self.terrain_types]
+        bar_y_scale = self.terrain_ladder_bar_y_scales[self.terrain_levels, self.terrain_types]
         ladder_angle_rad = torch.deg2rad(ladder_angle_deg)
         is_ladder = self.terrain_ladder_mask[self.terrain_levels, self.terrain_types]
 
@@ -788,6 +791,7 @@ class LeggedRobot(BaseTask):
         ladder_obs[:, 1] = bar_spacing * torch.sin(ladder_angle_rad)
         ladder_obs[:, 2] = bar_spacing * torch.cos(ladder_angle_rad)
         ladder_obs[:, 3] = ladder_up_yaw_rel
+        ladder_obs[:, 4] = bar_y_scale
         return ladder_obs
 
     def _lerp_cfg_range(self, value_range, difficulty):
@@ -853,6 +857,7 @@ class LeggedRobot(BaseTask):
             self.terrain_ladder_mask = torch.from_numpy(self.terrain.ladder_mask).to(self.device)
             self.terrain_ladder_bar_spacing = torch.from_numpy(self.terrain.ladder_bar_spacing).to(self.device).to(torch.float)
             self.terrain_ladder_angles = torch.from_numpy(self.terrain.ladder_angles).to(self.device).to(torch.float)
+            self.terrain_ladder_bar_y_scales = torch.from_numpy(self.terrain.ladder_bar_y_scales).to(self.device).to(torch.float)
         self.goal_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
         self.goal_targets[:, 2] += self.cfg.rewards.base_height_target
         self._randomize_rough_targets(torch.arange(self.num_envs, device=self.device))
