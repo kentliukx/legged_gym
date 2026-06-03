@@ -1563,7 +1563,7 @@ class LeggedRobot(BaseTask):
             (phase_contact[:, matched_indices["FR"]] == phase_contact[:, matched_indices["RL"]])
         ).float()
         pair_match = torch.stack((fl_rr_match, fr_rl_match), dim=1)
-        return 2.0 * torch.mean(pair_match, dim=1) - 1.0
+        return (2.0 * torch.mean(pair_match, dim=1) - 1.0) * self._get_flat_terrain_mask()
 
     def _reward_symmetry_torque(self):
         if not hasattr(self, "filtered_symmetry_torque_abs_diff"):
