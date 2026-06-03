@@ -109,6 +109,7 @@ class Terrain:
                                       bar_x_scale_min_level=None,
                                       bar_y_scale=1.0,
                                       bar_y_scale_min_level=None,
+                                      bar_y_scale_curve_power=1.0,
                                       platform_length=1.0,
                                       platform_width=1.2,
                                       platform_gap=0.1,
@@ -168,6 +169,7 @@ class Terrain:
                     bar_x_scale_min_level=bar_x_scale_min_level,
                     bar_y_scale=bar_y_scale,
                     bar_y_scale_min_level=bar_y_scale_min_level,
+                    bar_y_scale_curve_power=bar_y_scale_curve_power,
                     platform_length=platform_length,
                     platform_width=platform_width,
                     platform_gap=platform_gap,
@@ -312,6 +314,7 @@ def generate_ladder_bar_mesh(env_length,
                              bar_x_scale_min_level=None,
                              bar_y_scale=1.0,
                              bar_y_scale_min_level=None,
+                             bar_y_scale_curve_power=1.0,
                              platform_length=1.0,
                              platform_width=1.2,
                              platform_gap=0.1,
@@ -340,6 +343,7 @@ def generate_ladder_bar_mesh(env_length,
         ladder_level=ladder_level,
         max_ladder_level=max_ladder_level,
         min_value_level=bar_y_scale_min_level,
+        curve_power=bar_y_scale_curve_power,
     )
 
     vertices = []
@@ -739,11 +743,13 @@ def _lerp_range(value_range, difficulty):
     return float(value_range[0] + (value_range[1] - value_range[0]) * difficulty)
 
 
-def _lerp_range_by_level(value_range, ladder_level, max_ladder_level, min_value_level=None):
+def _lerp_range_by_level(value_range, ladder_level, max_ladder_level, min_value_level=None, curve_power=1.0):
     if np.isscalar(value_range):
         return float(value_range)
     if len(value_range) != 2:
         raise ValueError("range values must be scalars or two-element sequences")
+    if curve_power <= 0.0:
+        raise ValueError("curve_power must be positive")
 
     ladder_level = int(ladder_level)
     max_ladder_level = max(1, int(max_ladder_level))
@@ -753,6 +759,7 @@ def _lerp_range_by_level(value_range, ladder_level, max_ladder_level, min_value_
         min_value_level = max(1, min(int(min_value_level), max_ladder_level))
         effective_difficulty = float(ladder_level - 1) / max(1, min_value_level - 1)
         effective_difficulty = min(effective_difficulty, 1.0)
+    effective_difficulty = effective_difficulty ** curve_power
     return float(value_range[0] + (value_range[1] - value_range[0]) * effective_difficulty)
 
 
