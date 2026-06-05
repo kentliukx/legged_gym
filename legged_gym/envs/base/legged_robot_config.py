@@ -210,8 +210,8 @@ class LeggedRobotCfg(BaseConfig):
         base_height_target = 0.3
         max_contact_force = 150. # forces above this value are penalized
         foot_slip_threshold = 1.0
-        half_phase_lower = 0.3
-        half_phase_upper = 0.6
+        half_phase_lower = 0.25
+        half_phase_upper = 0.4
         symmetry_torque_lpf_tau = 0.2
         goal_radius = 0.15
         goal_speed_limit = 0.5
