@@ -180,7 +180,9 @@ def get_args():
 
 def export_policy_as_jit(actor_critic, path):
     if hasattr(actor_critic, 'memory_a'):
-        # assumes LSTM: TODO add GRU
+        if isinstance(actor_critic.memory_a.rnn, torch.nn.GRU):
+            print("Skipping JIT export: the current exporter does not support the student GRU architecture.")
+            return
         exporter = PolicyExporterLSTM(actor_critic)
         exporter.export(path)
     else: 

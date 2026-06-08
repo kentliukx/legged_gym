@@ -33,13 +33,25 @@ from .base_config import BaseConfig
 class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 4096
-        num_observations = 306
+        num_observations = 4752
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
+        proprioception_history_len = 50
         debug_terrain_sampling = False
         env_spacing = 3.  # not used with heightfields/trimeshes 
         send_timeouts = True # send time out information to the algorithm
         episode_length_s = 10 # episode length in seconds
+
+    class sensor:
+        enable_depth_camera = True
+        depth_width = 64
+        depth_height = 36
+        depth_horizontal_fov = 87.0
+        depth_update_interval_s = 0.1
+        depth_min = 0.1
+        depth_max = 3.0
+        depth_position = [0.35, 0.0, 0]
+        depth_rotation = [0.0, 0.0, 0.0, 1.0]  # xyzw, relative to base
 
     class terrain:
         mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
@@ -237,10 +249,9 @@ class LeggedRobotCfg(BaseConfig):
         class noise_scales:
             dof_pos = 0.01
             dof_vel = 1.5
-            lin_vel = 0.1
             ang_vel = 0.2
             gravity = 0.05
-            height_measurements = 0.1
+            depth_image = 0.02
 
     # viewer camera:
     class viewer:
@@ -275,10 +286,6 @@ class LeggedRobotCfgPPO(BaseConfig):
         actor_hidden_dims = [256, 128, 64]
         critic_hidden_dims = [512, 256, 128]
         activation = 'elu' # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
-        # only for 'ActorCriticRecurrent':
-        # rnn_type = 'lstm'
-        # rnn_hidden_size = 512
-        # rnn_num_layers = 1
         
     class algorithm:
         # training params
@@ -299,7 +306,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 48 # per iteration
-        max_iterations = 5000 # number of policy updates
+        max_iterations = 10000 # number of policy updates
 
         # logging
         save_interval = 50 # check for potential saves every this many iterations

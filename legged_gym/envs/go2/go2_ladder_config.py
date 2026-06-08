@@ -82,10 +82,10 @@ class GO2LadderCfg( LeggedRobotCfg ):
         pass
 
     class noise( LeggedRobotCfg.noise ):
-        add_noise = False
+        pass
 
 class GO2LadderCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
+        policy_class_name = 'ActorCriticRecurrent'
         experiment_name = 'go2_ladder'
-        max_iterations = 10000 # number of policy updates
-        resume = False # resume from previous checkpoint
+        teacher_checkpoint = 'logs/go2_ladder/Teacher/model_30000.pt'

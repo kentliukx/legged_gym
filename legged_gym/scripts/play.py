@@ -88,6 +88,7 @@ def play(args):
     for i in range(100*int(env.max_episode_length)):
         actions = policy(obs.detach())
         obs, _, rews, dones, infos = env.step(actions.detach())
+        ppo_runner.alg.actor_critic.reset(dones)
         if not args.headless:
             frame_wall_time += env.dt
             sleep_time = frame_wall_time - time.perf_counter()
