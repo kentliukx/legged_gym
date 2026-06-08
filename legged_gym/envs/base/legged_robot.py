@@ -1566,13 +1566,16 @@ class LeggedRobot(BaseTask):
                 and self.common_step_counter % self.depth_camera_update_interval_steps != 0):
             return
 
+        # Camera rendering needs the latest completed physics step before graphics work starts.
+        if self.device != 'cpu':
+            self.gym.fetch_results(self.sim, True)
         self.gym.step_graphics(self.sim)
         self.gym.render_all_camera_sensors(self.sim)
         self.gym.start_access_image_tensors(self.sim)
         min_depth = float(self.cfg.sensor.depth_min)
         max_depth = float(self.cfg.sensor.depth_max)
         for env_id, depth_tensor in enumerate(self.depth_image_tensors):
-            depth = -depth_tensor.to(self.device)
+            depth = -depth_tensor
             depth = torch.nan_to_num(depth, nan=max_depth, posinf=max_depth, neginf=max_depth)
             depth = torch.clamp(depth, min=min_depth, max=max_depth)
             depth = (depth - min_depth) / max(max_depth - min_depth, 1e-6)
