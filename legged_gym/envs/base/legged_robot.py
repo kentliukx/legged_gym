@@ -1568,6 +1568,8 @@ class LeggedRobot(BaseTask):
         # Camera rendering needs the latest completed physics step before graphics work starts.
         if self.device != 'cpu':
             self.gym.fetch_results(self.sim, True)
+        if self.viewer and self.debug_viz:
+            self.gym.clear_lines(self.viewer)
         self.gym.step_graphics(self.sim)
         self.gym.render_all_camera_sensors(self.sim)
         self.gym.start_access_image_tensors(self.sim)
