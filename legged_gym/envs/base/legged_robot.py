@@ -343,10 +343,9 @@ class LeggedRobot(BaseTask):
             # prioproception buffer
             proprioception_history,
 
-            # privileged information to be estimated
+            # privileged information, some to be reconstructed
             self.base_lin_vel * self.obs_scales.lin_vel,
             foot_contact,
-            # privileged information not to be estimated
             self.friction_coeffs,
             self.base_added_mass,
             self.p_gain_multipliers,
