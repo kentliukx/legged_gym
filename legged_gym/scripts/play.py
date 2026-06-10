@@ -35,8 +35,10 @@ import queue
 import time
 
 import isaacgym
+from isaacgym import gymapi, gymutil
 from legged_gym.envs import *
 from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger
+from legged_gym.utils.math import quat_apply_yaw
 
 import numpy as np
 import torch
@@ -66,6 +68,83 @@ def show_depth_camera(frame_queue):
         figure.canvas.draw_idle()
         figure.canvas.flush_events()
     plt.close(figure)
+
+
+def get_student_diagnostics(actor_critic, observations, robot_index):
+    if not hasattr(actor_critic, "estimator") or not hasattr(actor_critic, "reconstructed_terrain_obs"):
+        return None
+    if actor_critic.reconstructed_terrain_obs is None:
+        return None
+
+    split_obs = actor_critic._split_observations(observations)
+    estimator_raw = actor_critic.estimator(actor_critic._encode_history(split_obs["proprio_history"]))
+    estimated_state = torch.cat(
+        (
+            estimator_raw[..., :3],
+            torch.sigmoid(estimator_raw[..., 3:7]),
+            estimator_raw[..., 7:14],
+        ),
+        dim=-1,
+    )
+    estimated_target = torch.cat(
+        (
+            split_obs["base_lin_vel"],
+            split_obs["foot_contacts"],
+            split_obs["applied_force"],
+            split_obs["applied_torque"],
+            split_obs["friction"],
+        ),
+        dim=-1,
+    )
+    reconstructed_terrain = actor_critic.reconstructed_terrain_obs
+    height_dim = actor_critic.height_dim
+    return {
+        "estimated": estimated_state[robot_index].detach(),
+        "estimated_target": estimated_target[robot_index].detach(),
+        "reconstructed_height": reconstructed_terrain[robot_index, :height_dim].detach(),
+        "reconstructed_ladder": reconstructed_terrain[robot_index, height_dim:].detach(),
+        "ladder_target": split_obs["ladder_info"][robot_index].detach(),
+    }
+
+
+def print_student_diagnostics(diagnostics, step):
+    def values(tensor):
+        return np.array2string(
+            tensor.cpu().numpy(),
+            precision=3,
+            suppress_small=True,
+            floatmode="fixed",
+        )
+
+    estimated = diagnostics["estimated"]
+    target = diagnostics["estimated_target"]
+    print(f"\n[student diagnostics] step={step}")
+    print(f"  base_lin_vel   estimated={values(estimated[0:3])} target={values(target[0:3])}")
+    print(f"  foot_contacts  estimated={values(estimated[3:7])} target={values(target[3:7])}")
+    print(f"  applied_force  estimated={values(estimated[7:10])} target={values(target[7:10])}")
+    print(f"  applied_torque estimated={values(estimated[10:13])} target={values(target[10:13])}")
+    print(f"  friction       estimated={values(estimated[13:14])} target={values(target[13:14])}")
+    print(
+        f"  ladder_obs     reconstructed={values(diagnostics['reconstructed_ladder'])} "
+        f"target={values(diagnostics['ladder_target'])}"
+    )
+
+
+def draw_reconstructed_heightmap(env, robot_index, reconstructed_height, sphere_geometry):
+    height_scale = float(env.obs_scales.height_measurements)
+    reconstructed_height = torch.clamp(reconstructed_height, -1.0, 1.0) / max(height_scale, 1e-6)
+    world_heights = env.root_states[robot_index, 2] - 0.5 - reconstructed_height
+    local_points = env.height_points[robot_index]
+    world_points = quat_apply_yaw(
+        env.base_quat[robot_index].repeat(local_points.shape[0]),
+        local_points,
+    )
+    world_points = world_points + env.root_states[robot_index, :3]
+    world_points[:, 2] = world_heights
+
+    for point in world_points.cpu().numpy():
+        pose = gymapi.Transform(gymapi.Vec3(point[0], point[1], point[2]), r=None)
+        gymutil.draw_lines(sphere_geometry, env.gym, env.viewer, env.envs[robot_index], pose)
 
 
 def play(args):
@@ -112,6 +191,15 @@ def play(args):
     camera_direction = np.array(env_cfg.viewer.lookat) - np.array(env_cfg.viewer.pos)
     img_idx = 0
     frame_wall_time = time.perf_counter()
+    diagnostics = None
+    diagnostic_print_interval = max(1, int(round(DIAGNOSTIC_PRINT_INTERVAL_S / env.dt)))
+    reconstructed_height_geometry = gymutil.WireframeSphereGeometry(
+        0.025,
+        4,
+        4,
+        None,
+        color=(0.65, 0.0, 1.0),
+    )
     depth_process = None
     depth_frame_queue = None
     if VISUALIZE_DEPTH_CAMERA and not args.headless and env.cfg.sensor.enable_depth_camera:
@@ -127,8 +215,26 @@ def play(args):
     try:
         for i in range(100*int(env.max_episode_length)):
             actions = policy(obs.detach())
+            if PRINT_STUDENT_DIAGNOSTICS or VISUALIZE_RECONSTRUCTED_HEIGHTMAP:
+                with torch.inference_mode():
+                    diagnostics = get_student_diagnostics(
+                        ppo_runner.alg.actor_critic,
+                        obs.detach(),
+                        robot_index,
+                    )
+            if PRINT_STUDENT_DIAGNOSTICS and diagnostics is not None and i % diagnostic_print_interval == 0:
+                print_student_diagnostics(diagnostics, i)
             obs, _, rews, dones, infos = env.step(actions.detach())
             ppo_runner.alg.actor_critic.reset(dones)
+            if (VISUALIZE_RECONSTRUCTED_HEIGHTMAP
+                    and diagnostics is not None
+                    and env.viewer is not None):
+                draw_reconstructed_heightmap(
+                    env,
+                    robot_index,
+                    diagnostics["reconstructed_height"],
+                    reconstructed_height_geometry,
+                )
             if (depth_frame_queue is not None
                     and depth_process.is_alive()
                     and (env.common_step_counter <= 1
@@ -199,5 +305,8 @@ if __name__ == '__main__':
     RECORD_FRAMES = False
     MOVE_CAMERA = False
     VISUALIZE_DEPTH_CAMERA = True
+    PRINT_STUDENT_DIAGNOSTICS = True
+    DIAGNOSTIC_PRINT_INTERVAL_S = 1.0
+    VISUALIZE_RECONSTRUCTED_HEIGHTMAP = True
     args = get_args()
     play(args)
