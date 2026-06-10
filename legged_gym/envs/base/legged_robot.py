@@ -65,6 +65,7 @@ class LeggedRobot(BaseTask):
         self.cfg = cfg
         self.sim_params = sim_params
         self.height_samples = None
+        self.simplified_height_samples = None
         self.debug_viz = True
         self.init_done = False
         self._parse_cfg(self.cfg)
@@ -324,6 +325,8 @@ class LeggedRobot(BaseTask):
         foot_contact = self._get_foot_contacts().float()
         height_scan = torch.clip(
                 self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1) * self.obs_scales.height_measurements
+        height_scan_simplified = torch.clip(
+                self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights_simplified, -1, 1) * self.obs_scales.height_measurements
         ladder_obs = self._get_ladder_observations()
         depth_image_noisy = torch.clamp(
             self._add_uniform_noise(
@@ -355,8 +358,10 @@ class LeggedRobot(BaseTask):
             self.feet_air_time,
             self.phase_feet_ground_time,
 
-            # height scan to be reconstructed
+            # height scan
             height_scan,
+            # simplified height scan to be reconstructed
+            height_scan_simplified,
             # ladder obs to be reconstructed
             ladder_obs,
 
@@ -511,6 +516,7 @@ class LeggedRobot(BaseTask):
 
         if self.cfg.terrain.measure_heights:
             self.measured_heights = self._get_heights()
+            self.measured_heights_simplified = self._get_heights(height_samples=self.simplified_height_samples)
         if self.cfg.domain_rand.push_robots and  (self.common_step_counter % self.cfg.domain_rand.push_interval == 0):
             self._push_robots()
 
@@ -936,6 +942,7 @@ class LeggedRobot(BaseTask):
         if self.cfg.terrain.measure_heights:
             self.height_points = self._init_height_points()
         self.measured_heights = 0
+        self.measured_heights_simplified = 0
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
@@ -1090,6 +1097,7 @@ class LeggedRobot(BaseTask):
         ).flatten(order='F')
         self.gym.add_heightfield(self.sim, height_samples, hf_params)
         self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.obs_tot_rows, self.terrain.obs_tot_cols).to(self.device)
+        self.simplified_height_samples = torch.tensor(self.terrain.simplified_heightsamples).view(self.terrain.obs_tot_rows, self.terrain.obs_tot_cols).to(self.device)
 
     def _create_trimesh(self):
         """ Adds a triangle mesh terrain to the simulation, sets parameters based on the cfg.
@@ -1109,6 +1117,7 @@ class LeggedRobot(BaseTask):
         tm_params.restitution = self.cfg.terrain.restitution
         self.gym.add_triangle_mesh(self.sim, self.terrain.vertices.flatten(order='C'), self.terrain.triangles.flatten(order='C'), tm_params)   
         self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.obs_tot_rows, self.terrain.obs_tot_cols).to(self.device)
+        self.simplified_height_samples = torch.tensor(self.terrain.simplified_heightsamples).view(self.terrain.obs_tot_rows, self.terrain.obs_tot_cols).to(self.device)
 
     def _create_envs(self):
         """ Creates environments:
@@ -1409,7 +1418,7 @@ class LeggedRobot(BaseTask):
         points[:, :, 1] = grid_y.flatten()
         return points
 
-    def _get_heights(self, env_ids=None):
+    def _get_heights(self, env_ids=None, height_samples=None):
         """ Samples heights of the terrain at required points around each robot.
             The points are offset by the base's position and rotated by the base's yaw
 
@@ -1436,12 +1445,14 @@ class LeggedRobot(BaseTask):
         points = (points/self.terrain.obs_horizontal_scale).long()
         px = points[:, :, 0].view(-1)
         py = points[:, :, 1].view(-1)
-        px = torch.clip(px, 0, self.height_samples.shape[0]-2)
-        py = torch.clip(py, 0, self.height_samples.shape[1]-2)
+        if height_samples is None:
+            height_samples = self.height_samples
+        px = torch.clip(px, 0, height_samples.shape[0]-2)
+        py = torch.clip(py, 0, height_samples.shape[1]-2)
 
-        heights1 = self.height_samples[px, py]
-        heights2 = self.height_samples[px+1, py]
-        heights3 = self.height_samples[px, py+1]
+        heights1 = height_samples[px, py]
+        heights2 = height_samples[px+1, py]
+        heights3 = height_samples[px, py+1]
         heights = torch.min(heights1, heights2)
         heights = torch.min(heights, heights3)
 

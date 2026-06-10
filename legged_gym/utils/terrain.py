@@ -90,6 +90,7 @@ class Terrain:
         self.obs_tot_rows = int(cfg.num_rows * self.obs_length_per_env_pixels) + 2 * self.obs_border
 
         self.height_field_raw = np.zeros((self.obs_tot_rows, self.obs_tot_cols), dtype=np.int16)
+        self.simplified_height_field_raw = np.zeros((self.obs_tot_rows, self.obs_tot_cols), dtype=np.int16)
         self.physics_height_field_raw = np.zeros((self.tot_rows, self.tot_cols), dtype=np.int16)
         self.vertices = None
         self.triangles = None
@@ -98,6 +99,7 @@ class Terrain:
         self._selected_ladder_bars_terrain(**terrain_kwargs)
 
         self.heightsamples = self.height_field_raw
+        self.simplified_heightsamples = self.simplified_height_field_raw
         self.physics_heightsamples = self.physics_height_field_raw
 
     def _selected_ladder_bars_terrain(self,
@@ -148,6 +150,7 @@ class Terrain:
                 local_height_field = np.zeros(
                     (self.obs_length_per_env_pixels, self.obs_width_per_env_pixels),
                     dtype=np.int16)
+                local_simplified_height_field = np.copy(local_height_field)
                 platform_center = np.asarray([self.env_length * 0.85, self.env_width * 0.5, 0.0], dtype=np.float32)
                 ladder_origin = np.asarray([self.env_length * 0.5, self.env_width * 0.5, 0.0], dtype=np.float32)
                 local_vertices = np.zeros((0, 3), dtype=np.float32)
@@ -202,6 +205,18 @@ class Terrain:
                     platform_length=platform_length,
                     platform_width=platform_width,
                     platform_gap=platform_gap)
+                local_simplified_height_field = rasterize_ladder_plane(
+                    horizontal_scale=self.obs_horizontal_scale,
+                    vertical_scale=self.cfg.vertical_scale,
+                    num_rows=self.obs_length_per_env_pixels,
+                    num_cols=self.obs_width_per_env_pixels,
+                    bar_centers=bar_centers,
+                    bar_vertices=prepared_bar_vertices,
+                    bar_spacing=tile_bar_spacing,
+                    ladder_angle=tile_ladder_angle,
+                    platform_length=platform_length,
+                    platform_width=platform_width,
+                    platform_gap=platform_gap)
                 local_physics_height_field = np.zeros(
                     (self.length_per_env_pixels, self.width_per_env_pixels),
                     dtype=np.int16)
@@ -223,6 +238,9 @@ class Terrain:
             self.height_field_raw[
                 obs_start_x:obs_start_x + self.obs_length_per_env_pixels,
                 obs_start_y:obs_start_y + self.obs_width_per_env_pixels] = local_height_field
+            self.simplified_height_field_raw[
+                obs_start_x:obs_start_x + self.obs_length_per_env_pixels,
+                obs_start_y:obs_start_y + self.obs_width_per_env_pixels] = local_simplified_height_field
             self.physics_height_field_raw[
                 start_x:start_x + self.length_per_env_pixels,
                 start_y:start_y + self.width_per_env_pixels] = local_physics_height_field
@@ -296,6 +314,63 @@ def rasterize_ladder_bars(horizontal_scale,
             )
 
     _fill_platform_height(
+        height_field,
+        horizontal_scale=horizontal_scale,
+        vertical_scale=vertical_scale,
+        bar_centers=bar_centers,
+        platform_length=platform_length,
+        platform_width=platform_width,
+        platform_gap=platform_gap)
+    return height_field
+
+
+def rasterize_ladder_plane(horizontal_scale,
+                           vertical_scale,
+                           num_rows,
+                           num_cols,
+                           bar_centers,
+                           bar_vertices,
+                           bar_spacing,
+                           ladder_angle,
+                           platform_length=1.0,
+                           platform_width=1.2,
+                           platform_gap=0.1,
+                           base_height=0.0):
+    height_field = np.full((num_rows, num_cols), int(np.round(base_height / vertical_scale)), dtype=np.int16)
+    if len(bar_centers) > 0:
+        bar_mins = bar_vertices.min(axis=0)
+        bar_maxs = bar_vertices.max(axis=0)
+        first_bar = bar_centers[0]
+        last_bar = bar_centers[-1]
+        angle_rad = np.deg2rad(ladder_angle)
+        first_step = np.asarray(
+            [bar_spacing * np.cos(angle_rad), 0.0, bar_spacing * np.sin(angle_rad)],
+            dtype=np.float32,
+        )
+        ground_center = first_bar - first_step
+
+        min_x = max(0, int(np.floor((ground_center[0] + bar_mins[0]) / horizontal_scale)))
+        max_x = min(num_rows - 1, int(np.floor((last_bar[0] + bar_maxs[0]) / horizontal_scale)))
+        min_y = max(0, int(np.floor((ground_center[1] + bar_mins[1]) / horizontal_scale)))
+        max_y = min(num_cols - 1, int(np.floor((ground_center[1] + bar_maxs[1]) / horizontal_scale)))
+
+        if min_x <= max_x and min_y <= max_y:
+            x_coordinates = np.arange(min_x, max_x + 1, dtype=np.float32) * horizontal_scale
+            x_span = max(float(last_bar[0] - ground_center[0]), 1e-6)
+            progress = np.clip((x_coordinates - ground_center[0]) / x_span, 0.0, 1.0)
+            heights = progress * last_bar[2]
+            height_values = np.round(heights / vertical_scale).astype(np.int16)
+            height_field[min_x:max_x + 1, min_y:max_y + 1] = height_values[:, None]
+
+    _fill_platform_height(
+        height_field,
+        horizontal_scale=horizontal_scale,
+        vertical_scale=vertical_scale,
+        bar_centers=bar_centers,
+        platform_length=platform_length,
+        platform_width=platform_width,
+        platform_gap=platform_gap)
+    _fill_platform_gap_height(
         height_field,
         horizontal_scale=horizontal_scale,
         vertical_scale=vertical_scale,
@@ -604,6 +679,28 @@ def _fill_platform_height(height_field,
 
     min_x = max(0, int(np.floor(np.min(corners_xy[:, 0]) / horizontal_scale)))
     max_x = min(height_field.shape[0] - 1, int(np.floor(np.max(corners_xy[:, 0]) / horizontal_scale)))
+    min_y = max(0, int(np.floor(np.min(corners_xy[:, 1]) / horizontal_scale)))
+    max_y = min(height_field.shape[1] - 1, int(np.floor(np.max(corners_xy[:, 1]) / horizontal_scale)))
+    if min_x <= max_x and min_y <= max_y:
+        height_field[min_x:max_x + 1, min_y:max_y + 1] = int(np.round(top_z / vertical_scale))
+
+
+def _fill_platform_gap_height(height_field,
+                              horizontal_scale,
+                              vertical_scale,
+                              bar_centers,
+                              platform_length,
+                              platform_width,
+                              platform_gap):
+    if platform_gap <= 0.0 or platform_length <= 0.0 or platform_width <= 0.0:
+        return
+
+    corners_xy, top_z = _platform_corners(bar_centers, platform_length, platform_width, platform_gap)
+    last_bar = bar_centers[-1]
+    platform_start_x = np.min(corners_xy[:, 0])
+
+    min_x = max(0, int(np.floor(last_bar[0] / horizontal_scale)))
+    max_x = min(height_field.shape[0] - 1, int(np.floor(platform_start_x / horizontal_scale)))
     min_y = max(0, int(np.floor(np.min(corners_xy[:, 1]) / horizontal_scale)))
     max_y = min(height_field.shape[1] - 1, int(np.floor(np.max(corners_xy[:, 1]) / horizontal_scale)))
     if min_x <= max_x and min_y <= max_y:

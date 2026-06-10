@@ -102,6 +102,7 @@ def get_student_diagnostics(actor_critic, observations, robot_index):
         "estimated": estimated_state[robot_index].detach(),
         "estimated_target": estimated_target[robot_index].detach(),
         "reconstructed_height": reconstructed_terrain[robot_index, :height_dim].detach(),
+        "reconstructed_height_target": split_obs["height_scan_simplified"][robot_index].detach(),
         "reconstructed_ladder": reconstructed_terrain[robot_index, height_dim:].detach(),
         "ladder_target": split_obs["ladder_info"][robot_index].detach(),
     }
@@ -200,6 +201,13 @@ def play(args):
         None,
         color=(0.65, 0.0, 1.0),
     )
+    reconstructed_height_target_geometry = gymutil.WireframeSphereGeometry(
+        0.018,
+        4,
+        4,
+        None,
+        color=(0.55, 1.0, 0.55),
+    )
     depth_process = None
     depth_frame_queue = None
     if VISUALIZE_DEPTH_CAMERA and not args.headless and env.cfg.sensor.enable_depth_camera:
@@ -234,6 +242,12 @@ def play(args):
                     robot_index,
                     diagnostics["reconstructed_height"],
                     reconstructed_height_geometry,
+                )
+                draw_reconstructed_heightmap(
+                    env,
+                    robot_index,
+                    diagnostics["reconstructed_height_target"],
+                    reconstructed_height_target_geometry,
                 )
             if (depth_frame_queue is not None
                     and depth_process.is_alive()
