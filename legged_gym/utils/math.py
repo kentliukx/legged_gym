@@ -36,6 +36,19 @@ from typing import Tuple
 def normalize(x, eps=1e-9):
     return x / x.norm(p=2, dim=-1, keepdim=True).clamp(min=eps)
 
+def quat_multiply_xyzw(q1, q2):
+    x1, y1, z1, w1 = q1.unbind(dim=-1)
+    x2, y2, z2, w2 = q2.unbind(dim=-1)
+    return torch.stack(
+        (
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+        ),
+        dim=-1,
+    )
+
 def quat_apply(quat, vec):
     vec_shape = vec.shape
     vec = vec.reshape(-1, 3)

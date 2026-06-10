@@ -44,9 +44,10 @@ from typing import Tuple, Dict
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from legged_gym.envs.base.base_task import BaseTask
 from legged_gym.utils.terrain import Terrain
-from legged_gym.utils.math import quat_apply, quat_apply_yaw, quat_rotate_inverse, wrap_to_pi, torch_rand_float, torch_rand_sqrt_float
+from legged_gym.utils.math import quat_apply, quat_apply_yaw, quat_multiply_xyzw, quat_rotate_inverse, wrap_to_pi, torch_rand_float, torch_rand_sqrt_float
 from legged_gym.utils.helpers import class_to_dict
 from .legged_robot_config import LeggedRobotCfg
+
 
 class LeggedRobot(BaseTask):
     def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless):
@@ -874,16 +875,12 @@ class LeggedRobot(BaseTask):
             device=self.device,
             requires_grad=False,
         )
-        self.depth_image_tensors = []
+        self.depth_camera = None
+        self.depth_camera_position = None
+        self.depth_camera_rotation = None
+        self.depth_camera_axis_rotation = None
         if self.cfg.sensor.enable_depth_camera:
-            for env_handle, camera_handle in zip(self.envs, self.depth_camera_handles):
-                depth_tensor = self.gym.get_camera_image_gpu_tensor(
-                    self.sim,
-                    env_handle,
-                    camera_handle,
-                    gymapi.IMAGE_DEPTH,
-                )
-                self.depth_image_tensors.append(gymtorch.wrap_tensor(depth_tensor))
+            self._init_depth_camera()
         self.last_dof_vel = torch.zeros_like(self.dof_vel)
         self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13])
         self.commands = torch.zeros(self.num_envs, self.cfg.commands.num_commands, dtype=torch.float, device=self.device, requires_grad=False)
@@ -1198,7 +1195,6 @@ class LeggedRobot(BaseTask):
         env_upper = gymapi.Vec3(0., 0., 0.)
         self.actor_handles = []
         self.envs = []
-        self.depth_camera_handles = []
         for i in range(self.num_envs):
             # create env instance
             env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
@@ -1216,8 +1212,6 @@ class LeggedRobot(BaseTask):
             self.gym.set_actor_rigid_body_properties(env_handle, actor_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(actor_handle)
-            if self.cfg.sensor.enable_depth_camera:
-                self.depth_camera_handles.append(self._create_depth_camera_sensor(env_handle, actor_handle))
 
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
@@ -1236,26 +1230,40 @@ class LeggedRobot(BaseTask):
         if self.base_body_index < 0:
             raise ValueError(f"Could not find base rigid body '{self.cfg.asset.base_name}' in asset body names: {body_names}")
 
-    def _create_depth_camera_sensor(self, env_handle, actor_handle):
-        camera_props = gymapi.CameraProperties()
-        camera_props.width = int(self.cfg.sensor.depth_width)
-        camera_props.height = int(self.cfg.sensor.depth_height)
-        camera_props.horizontal_fov = float(self.cfg.sensor.depth_horizontal_fov)
-        camera_props.enable_tensors = True
-        camera_handle = self.gym.create_camera_sensor(env_handle, camera_props)
+    def _init_depth_camera(self):
+        if self.cfg.terrain.mesh_type != "trimesh":
+            raise ValueError("Warp depth camera currently requires terrain.mesh_type='trimesh'")
 
-        camera_transform = gymapi.Transform()
-        camera_transform.p = gymapi.Vec3(*self.cfg.sensor.depth_position)
-        camera_transform.r = gymapi.Quat(*self.cfg.sensor.depth_rotation)
-        base_handle = self.gym.find_actor_rigid_body_handle(env_handle, actor_handle, self.cfg.asset.base_name)
-        self.gym.attach_camera_to_body(
-            camera_handle,
-            env_handle,
-            base_handle,
-            camera_transform,
-            gymapi.FOLLOW_TRANSFORM,
+        from legged_gym.utils.warp_depth_camera import WarpDepthCamera
+
+        terrain_offset = [-self.terrain.cfg.border_size, -self.terrain.cfg.border_size, 0.0]
+        self.depth_camera = WarpDepthCamera(
+            terrain_vertices=self.terrain.vertices,
+            terrain_triangles=self.terrain.triangles,
+            terrain_offset=terrain_offset,
+            num_envs=self.num_envs,
+            width=self.cfg.sensor.depth_width,
+            height=self.cfg.sensor.depth_height,
+            horizontal_fov_deg=self.cfg.sensor.depth_horizontal_fov,
+            far_plane=self.cfg.sensor.depth_max,
+            device=self.device,
         )
-        return camera_handle
+        self.depth_camera_position = torch.tensor(
+            self.cfg.sensor.depth_position,
+            dtype=torch.float32,
+            device=self.device,
+        ).repeat(self.num_envs, 1)
+        self.depth_camera_rotation = torch.tensor(
+            self.cfg.sensor.depth_rotation,
+            dtype=torch.float32,
+            device=self.device,
+        ).repeat(self.num_envs, 1)
+        # Converts Warp's z-forward pinhole frame to Isaac Gym's x-forward camera frame.
+        self.depth_camera_axis_rotation = torch.tensor(
+            [-0.5, 0.5, -0.5, 0.5],
+            dtype=torch.float32,
+            device=self.device,
+        ).repeat(self.num_envs, 1)
 
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
@@ -1570,29 +1578,31 @@ class LeggedRobot(BaseTask):
     def _update_depth_camera_observations(self):
         if not self.cfg.sensor.enable_depth_camera:
             return
-        if len(self.depth_image_tensors) == 0:
-            return
         if (self.common_step_counter > 1
                 and self.common_step_counter % self.depth_camera_update_interval_steps != 0):
             return
 
-        # Camera rendering needs the latest completed physics step before graphics work starts.
-        if self.device != 'cpu':
-            self.gym.fetch_results(self.sim, True)
-        if self.viewer and self.debug_viz:
-            self.gym.clear_lines(self.viewer)
-        self.gym.step_graphics(self.sim)
-        self.gym.render_all_camera_sensors(self.sim)
-        self.gym.start_access_image_tensors(self.sim)
         min_depth = float(self.cfg.sensor.depth_min)
         max_depth = float(self.cfg.sensor.depth_max)
-        for env_id, depth_tensor in enumerate(self.depth_image_tensors):
-            depth = -depth_tensor
-            depth = torch.nan_to_num(depth, nan=max_depth, posinf=max_depth, neginf=max_depth)
-            depth = torch.clamp(depth, min=min_depth, max=max_depth)
-            depth = (depth - min_depth) / max(max_depth - min_depth, 1e-6)
-            self.depth_image_buf[env_id] = depth.reshape(-1)
-        self.gym.end_access_image_tensors(self.sim)
+        camera_base_positions = self.rigid_body_states[:, self.base_body_index, :3]
+        camera_base_orientations = self.rigid_body_states[:, self.base_body_index, 3:7]
+        camera_positions = camera_base_positions + quat_apply(
+            camera_base_orientations,
+            self.depth_camera_position,
+        )
+        camera_orientations = quat_multiply_xyzw(
+            camera_base_orientations,
+            quat_multiply_xyzw(
+                self.depth_camera_rotation,
+                self.depth_camera_axis_rotation,
+            ),
+        )
+        depth = self.depth_camera.render(camera_positions, camera_orientations)
+        depth = torch.nan_to_num(depth, nan=max_depth, posinf=max_depth, neginf=max_depth)
+        depth = torch.clamp(depth, min=min_depth, max=max_depth)
+        self.depth_image_buf[:] = (
+            (depth - min_depth) / max(max_depth - min_depth, 1e-6)
+        ).reshape(self.num_envs, -1)
 
     def _reward_position_tracking(self):
         goal_reached, goal_dist = self._get_goal_delta()

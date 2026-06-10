@@ -234,6 +234,10 @@ def play(args):
                 print_student_diagnostics(diagnostics, i)
             obs, _, rews, dones, infos = env.step(actions.detach())
             ppo_runner.alg.actor_critic.reset(dones)
+            depth_camera_updated = (
+                env.common_step_counter <= 1
+                or env.common_step_counter % env.depth_camera_update_interval_steps == 0
+            )
             if (VISUALIZE_RECONSTRUCTED_HEIGHTMAP
                     and diagnostics is not None
                     and env.viewer is not None):
@@ -251,8 +255,7 @@ def play(args):
                 )
             if (depth_frame_queue is not None
                     and depth_process.is_alive()
-                    and (env.common_step_counter <= 1
-                         or env.common_step_counter % env.depth_camera_update_interval_steps == 0)):
+                    and depth_camera_updated):
                 depth_frame = env.depth_image_buf[robot_index].reshape(
                     env.cfg.sensor.depth_height,
                     env.cfg.sensor.depth_width,

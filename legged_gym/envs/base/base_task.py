@@ -56,8 +56,6 @@ class BaseTask():
         self.graphics_device_id = self.sim_device_id
         if self.headless == True:
             self.graphics_device_id = -1
-        if bool(getattr(getattr(cfg, "sensor", None), "enable_depth_camera", False)):
-            self.graphics_device_id = self.sim_device_id
 
         self.num_envs = cfg.env.num_envs
         self.num_obs = cfg.env.num_observations
