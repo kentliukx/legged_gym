@@ -32,7 +32,7 @@ from .base_config import BaseConfig
 
 class LeggedRobotCfg(BaseConfig):
     class env:
-        num_envs = 4096
+        num_envs = 2048
         num_observations = 4983
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
@@ -40,7 +40,7 @@ class LeggedRobotCfg(BaseConfig):
         debug_terrain_sampling = False
         env_spacing = 3.  # not used with heightfields/trimeshes 
         send_timeouts = True # send time out information to the algorithm
-        episode_length_s = 10 # episode length in seconds
+        episode_length_s = 15 # episode length in seconds
 
     class sensor:
         enable_depth_camera = True
@@ -294,7 +294,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         clip_param = 0.2
         entropy_coef = 0.01
         num_learning_epochs = 5
-        num_mini_batches = 8 # mini batch size = num_envs*nsteps / nminibatches
+        num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-3 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
@@ -306,7 +306,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 48 # per iteration
-        max_iterations = 10000 # number of policy updates
+        max_iterations = 20000 # number of policy updates
 
         # logging
         save_interval = 50 # check for potential saves every this many iterations
