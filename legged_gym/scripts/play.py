@@ -70,6 +70,45 @@ def show_depth_camera(frame_queue):
     plt.close(figure)
 
 
+def show_height_comparison(frame_queue, height_shape):
+    import matplotlib.pyplot as plt
+
+    plt.ion()
+    figure = plt.figure(num="Scanned vs reconstructed height", figsize=(7, 8))
+    grid = figure.add_gridspec(1, 3, width_ratios=(1.0, 1.0, 0.045), wspace=0.28)
+    axes = [figure.add_subplot(grid[0, 0]), figure.add_subplot(grid[0, 1])]
+    colorbar_axis = figure.add_subplot(grid[0, 2])
+    images = [
+        axes[0].imshow(np.zeros(height_shape), cmap="viridis", origin="lower", vmin=-1.0, vmax=1.0),
+        axes[1].imshow(np.zeros(height_shape), cmap="viridis", origin="lower", vmin=-1.0, vmax=1.0),
+    ]
+    axes[0].set_title("Scanned height")
+    axes[1].set_title("Reconstructed height")
+    for axis in axes:
+        axis.set_xlabel("y sample")
+        axis.set_ylabel("x sample")
+    colorbar = figure.colorbar(images[0], cax=colorbar_axis)
+    colorbar.set_label("Normalized height observation")
+    figure.subplots_adjust(left=0.10, right=0.91, bottom=0.08, top=0.90)
+    figure.show()
+
+    while plt.fignum_exists(figure.number):
+        try:
+            scanned, reconstructed = frame_queue.get(timeout=0.05)
+        except queue.Empty:
+            plt.pause(0.001)
+            continue
+        if scanned is None:
+            break
+        for image, data in zip(images, (scanned, reconstructed)):
+            image.set_data(data)
+        mse = np.mean((scanned - reconstructed) ** 2)
+        figure.suptitle(f"Height scan comparison | MSE={mse:.6f}")
+        figure.canvas.draw_idle()
+        figure.canvas.flush_events()
+    plt.close(figure)
+
+
 def get_student_diagnostics(actor_critic, observations, robot_index):
     if not hasattr(actor_critic, "estimator") or not hasattr(actor_critic, "reconstructed_terrain_obs"):
         return None
@@ -231,6 +270,9 @@ def play(args):
     )
     depth_process = None
     depth_frame_queue = None
+    height_process = None
+    height_frame_queue = None
+    mp_context = None
     if VISUALIZE_DEPTH_CAMERA and not args.headless and env.cfg.sensor.enable_depth_camera:
         mp_context = mp.get_context("spawn")
         depth_frame_queue = mp_context.Queue(maxsize=1)
@@ -240,6 +282,22 @@ def play(args):
             daemon=True,
         )
         depth_process.start()
+    if VISUALIZE_HEIGHT_COMPARISON and not args.headless:
+        if mp_context is None:
+            mp_context = mp.get_context("spawn")
+        height_frame_queue = mp_context.Queue(maxsize=1)
+        height_process = mp_context.Process(
+            target=show_height_comparison,
+            args=(
+                height_frame_queue,
+                (
+                    len(env.cfg.terrain.measured_points_x),
+                    len(env.cfg.terrain.measured_points_y),
+                ),
+            ),
+            daemon=True,
+        )
+        height_process.start()
 
     try:
         for i in range(100*int(env.max_episode_length)):
@@ -249,7 +307,9 @@ def play(args):
                     actions = policy(obs.detach())
             else:
                 actions = policy(obs.detach())
-            if PRINT_STUDENT_DIAGNOSTICS or VISUALIZE_RECONSTRUCTED_HEIGHTMAP:
+            if (PRINT_STUDENT_DIAGNOSTICS
+                    or VISUALIZE_RECONSTRUCTED_HEIGHTMAP
+                    or VISUALIZE_HEIGHT_COMPARISON):
                 with torch.inference_mode():
                     diagnostics = get_student_diagnostics(
                         ppo_runner.alg.actor_critic,
@@ -292,6 +352,24 @@ def play(args):
                 ).cpu().numpy()
                 try:
                     depth_frame_queue.put_nowait(depth_frame)
+                except queue.Full:
+                    pass
+            if (height_frame_queue is not None
+                    and height_process.is_alive()
+                    and diagnostics is not None
+                    and depth_camera_updated):
+                height_shape = (
+                    len(env.cfg.terrain.measured_points_x),
+                    len(env.cfg.terrain.measured_points_y),
+                )
+                scanned_height = np.rot90(diagnostics["reconstructed_height_target"].reshape(
+                    height_shape
+                ).T.cpu().numpy())
+                reconstructed_height = np.rot90(diagnostics["reconstructed_height"].reshape(
+                    height_shape
+                ).T.cpu().numpy())
+                try:
+                    height_frame_queue.put_nowait((scanned_height, reconstructed_height))
                 except queue.Full:
                     pass
             if not args.headless:
@@ -346,6 +424,12 @@ def play(args):
             except queue.Full:
                 pass
             depth_process.join(timeout=1.0)
+        if height_frame_queue is not None and height_process.is_alive():
+            try:
+                height_frame_queue.put_nowait((None, None))
+            except queue.Full:
+                pass
+            height_process.join(timeout=1.0)
 
 if __name__ == '__main__':
     EXPORT_POLICY = True
@@ -355,5 +439,6 @@ if __name__ == '__main__':
     PRINT_STUDENT_DIAGNOSTICS = True
     DIAGNOSTIC_PRINT_INTERVAL_S = 1.0
     VISUALIZE_RECONSTRUCTED_HEIGHTMAP = True
+    VISUALIZE_HEIGHT_COMPARISON = True
     args = get_args()
     play(args)
