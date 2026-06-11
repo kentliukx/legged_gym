@@ -102,7 +102,7 @@ def get_student_diagnostics(actor_critic, observations, robot_index):
         "estimated": estimated_state[robot_index].detach(),
         "estimated_target": estimated_target[robot_index].detach(),
         "reconstructed_height": reconstructed_terrain[robot_index, :height_dim].detach(),
-        "reconstructed_height_target": split_obs["height_scan_simplified"][robot_index].detach(),
+        "reconstructed_height_target": split_obs["height_scan"][robot_index].detach(),
         "reconstructed_ladder": reconstructed_terrain[robot_index, height_dim:].detach(),
         "ladder_target": split_obs["ladder_info"][robot_index].detach(),
     }
@@ -129,6 +129,13 @@ def print_student_diagnostics(diagnostics, step):
         f"  ladder_obs     reconstructed={values(diagnostics['reconstructed_ladder'])} "
         f"target={values(diagnostics['ladder_target'])}"
     )
+    height_mse = torch.mean(
+        (diagnostics["reconstructed_height"] - diagnostics["reconstructed_height_target"]) ** 2
+    )
+    ladder_mse = torch.mean(
+        (diagnostics["reconstructed_ladder"] - diagnostics["ladder_target"]) ** 2
+    )
+    print(f"  height_scan MSE={height_mse.item():.6f}  ladder MSE={ladder_mse.item():.6f}")
 
 
 def draw_reconstructed_heightmap(env, robot_index, reconstructed_height, sphere_geometry):
@@ -168,13 +175,27 @@ def play(args):
     # load policy
     train_cfg.runner.resume = True
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
-    if args.sample:
+    teacher_action_mode = args.teacher
+    if teacher_action_mode:
+        student_policy = ppo_runner.get_inference_policy(device=env.device)
+        teacher = ppo_runner.load_teacher_policy()
+        if teacher is None:
+            raise RuntimeError("--teacher requires runner.teacher_checkpoint")
+        teacher.eval()
+        teacher.to(env.device)
+        policy = teacher.act_inference
+        print("Play mode: Teacher actions with Student diagnostics")
+    elif args.sample:
+        student_policy = None
         ppo_runner.alg.actor_critic.eval()
         if env.device != "cpu":
             ppo_runner.alg.actor_critic.to(env.device)
         policy = ppo_runner.alg.actor_critic.act
+        print("Play mode: Student stochastic actions")
     else:
+        student_policy = None
         policy = ppo_runner.get_inference_policy(device=env.device)
+        print("Play mode: Student deterministic actions")
     
     # export policy as a jit module (used to run it from C++)
     if EXPORT_POLICY:
@@ -222,7 +243,12 @@ def play(args):
 
     try:
         for i in range(100*int(env.max_episode_length)):
-            actions = policy(obs.detach())
+            if teacher_action_mode:
+                with torch.inference_mode():
+                    student_policy(obs.detach())
+                    actions = policy(obs.detach())
+            else:
+                actions = policy(obs.detach())
             if PRINT_STUDENT_DIAGNOSTICS or VISUALIZE_RECONSTRUCTED_HEIGHTMAP:
                 with torch.inference_mode():
                     diagnostics = get_student_diagnostics(
@@ -233,7 +259,11 @@ def play(args):
             if PRINT_STUDENT_DIAGNOSTICS and diagnostics is not None and i % diagnostic_print_interval == 0:
                 print_student_diagnostics(diagnostics, i)
             obs, _, rews, dones, infos = env.step(actions.detach())
-            ppo_runner.alg.actor_critic.reset(dones)
+            if teacher_action_mode:
+                with torch.inference_mode():
+                    ppo_runner.alg.actor_critic.reset(dones)
+            else:
+                ppo_runner.alg.actor_critic.reset(dones)
             depth_camera_updated = (
                 env.common_step_counter <= 1
                 or env.common_step_counter % env.depth_camera_update_interval_steps == 0
