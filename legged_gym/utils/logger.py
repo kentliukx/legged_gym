@@ -29,9 +29,9 @@
 # Copyright (c) 2021 ETH Zurich, Nikita Rudin
 
 import matplotlib.pyplot as plt
+import multiprocessing as mp
 import numpy as np
 from collections import defaultdict
-from multiprocessing import Process, Value
 
 class Logger:
     def __init__(self, dt):
@@ -59,8 +59,9 @@ class Logger:
         self.rew_log.clear()
 
     def plot_states(self):
-        self.plot_process = Process(target=self._plot)
-        self.plot_process.start()
+        plot_process = mp.get_context("spawn").Process(target=self._plot)
+        plot_process.start()
+        self.plot_process = plot_process
 
     def _plot(self):
         nb_rows = 3

@@ -301,16 +301,13 @@ def play(args):
 
     try:
         for i in range(100*int(env.max_episode_length)):
-            if teacher_action_mode:
-                with torch.inference_mode():
+            with torch.inference_mode():
+                if teacher_action_mode:
                     student_policy(obs.detach())
-                    actions = policy(obs.detach())
-            else:
                 actions = policy(obs.detach())
-            if (PRINT_STUDENT_DIAGNOSTICS
-                    or VISUALIZE_RECONSTRUCTED_HEIGHTMAP
-                    or VISUALIZE_HEIGHT_COMPARISON):
-                with torch.inference_mode():
+                if (PRINT_STUDENT_DIAGNOSTICS
+                        or VISUALIZE_RECONSTRUCTED_HEIGHTMAP
+                        or VISUALIZE_HEIGHT_COMPARISON):
                     diagnostics = get_student_diagnostics(
                         ppo_runner.alg.actor_critic,
                         obs.detach(),
@@ -319,10 +316,7 @@ def play(args):
             if PRINT_STUDENT_DIAGNOSTICS and diagnostics is not None and i % diagnostic_print_interval == 0:
                 print_student_diagnostics(diagnostics, i)
             obs, _, rews, dones, infos = env.step(actions.detach())
-            if teacher_action_mode:
-                with torch.inference_mode():
-                    ppo_runner.alg.actor_critic.reset(dones)
-            else:
+            with torch.inference_mode():
                 ppo_runner.alg.actor_critic.reset(dones)
             depth_camera_updated = (
                 env.common_step_counter <= 1
@@ -388,7 +382,7 @@ def play(args):
                 camera_position += camera_vel * env.dt
                 env.set_camera(camera_position, camera_position + camera_direction)
 
-            if i < stop_state_log:
+            if PLOT_STATES and i < stop_state_log:
                 command_x = env.commands[robot_index, 0].item() if env.commands.shape[1] > 0 else 0.0
                 command_y = env.commands[robot_index, 1].item() if env.commands.shape[1] > 1 else 0.0
                 command_yaw = env.commands[robot_index, 2].item() if env.commands.shape[1] > 2 else 0.0
@@ -408,7 +402,7 @@ def play(args):
                         'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy()
                     }
                 )
-            elif i==stop_state_log:
+            elif PLOT_STATES and i==stop_state_log:
                 logger.plot_states()
             if  0 < i < stop_rew_log:
                 if infos["episode"]:
@@ -436,6 +430,7 @@ if __name__ == '__main__':
     RECORD_FRAMES = False
     MOVE_CAMERA = False
     VISUALIZE_DEPTH_CAMERA = True
+    PLOT_STATES = True
     PRINT_STUDENT_DIAGNOSTICS = True
     DIAGNOSTIC_PRINT_INTERVAL_S = 1.0
     VISUALIZE_RECONSTRUCTED_HEIGHTMAP = True
