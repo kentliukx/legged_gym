@@ -274,8 +274,8 @@ class LeggedRobotCfg(BaseConfig):
             rest_offset = 0   # [m]
             bounce_threshold_velocity = 0.5 #0.5 [m/s]
             max_depenetration_velocity = 10.0
-            max_gpu_contact_pairs = 2**24 #2**24 -> needed for 8000 envs and more
-            default_buffer_size_multiplier = 10
+            max_gpu_contact_pairs = 2**22 #2**24 -> needed for 8000 envs and more
+            default_buffer_size_multiplier = 3
             contact_collection = 2 # 0: never, 1: last sub-step, 2: all sub-steps (default=2)
 
 class LeggedRobotCfgPPO(BaseConfig):
@@ -294,7 +294,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         clip_param = 0.2
         entropy_coef = 0.01
         num_learning_epochs = 5
-        num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
+        num_mini_batches = 8 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-3 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
