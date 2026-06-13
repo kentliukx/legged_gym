@@ -75,8 +75,8 @@ class GO2LadderCfg( LeggedRobotCfg ):
         apply_base_force_torque = True
         base_force_interval_s = 4.
         base_force_duration_s = 2
-        max_base_force = [30., 30., 30.]
-        max_base_torque = [10., 10., 10.]
+        max_base_force = [10., 10., 10.]
+        max_base_torque = [5., 5., 5.]
   
     class rewards( LeggedRobotCfg.rewards ):
         pass
