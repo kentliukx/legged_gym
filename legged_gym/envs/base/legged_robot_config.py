@@ -299,7 +299,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
         lam = 0.95
-        desired_kl = 0.01
+        desired_kl = 0.005
         max_grad_norm = 1.
         # mode
         teacher_actions_no_rl = False
