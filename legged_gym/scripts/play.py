@@ -88,7 +88,7 @@ def show_height_comparison(frame_queue, height_shape):
         axis.set_xlabel("y sample")
         axis.set_ylabel("x sample")
     colorbar = figure.colorbar(images[0], cax=colorbar_axis)
-    colorbar.set_label("Normalized height observation")
+    colorbar.set_label("Terrain height relative to reference (high = positive)")
     figure.subplots_adjust(left=0.10, right=0.91, bottom=0.08, top=0.90)
     figure.show()
 
@@ -177,21 +177,36 @@ def print_student_diagnostics(diagnostics, step):
     print(f"  height_scan MSE={height_mse.item():.6f}  ladder MSE={ladder_mse.item():.6f}")
 
 
-def draw_reconstructed_heightmap(env, robot_index, reconstructed_height, sphere_geometry):
-    height_scale = float(env.obs_scales.height_measurements)
-    reconstructed_height = torch.clamp(reconstructed_height, -1.0, 1.0) / max(height_scale, 1e-6)
-    world_heights = env.root_states[robot_index, 2] - 0.5 - reconstructed_height
+def get_height_visualization_frame(env, robot_index):
     local_points = env.height_points[robot_index]
     world_points = quat_apply_yaw(
         env.base_quat[robot_index].repeat(local_points.shape[0]),
         local_points,
     )
     world_points = world_points + env.root_states[robot_index, :3]
+    return {
+        "base_height": env.root_states[robot_index, 2].detach().clone(),
+        "env_index": robot_index,
+        "world_points": world_points.detach().clone(),
+    }
+
+
+def draw_reconstructed_heightmap(env, reconstructed_height, visualization_frame, sphere_geometry):
+    height_scale = float(env.obs_scales.height_measurements)
+    reconstructed_height = torch.clamp(reconstructed_height, -1.0, 1.0) / max(height_scale, 1e-6)
+    world_heights = visualization_frame["base_height"] - 0.5 - reconstructed_height
+    world_points = visualization_frame["world_points"].clone()
     world_points[:, 2] = world_heights
 
     for point in world_points.cpu().numpy():
         pose = gymapi.Transform(gymapi.Vec3(point[0], point[1], point[2]), r=None)
-        gymutil.draw_lines(sphere_geometry, env.gym, env.viewer, env.envs[robot_index], pose)
+        gymutil.draw_lines(
+            sphere_geometry,
+            env.gym,
+            env.viewer,
+            env.envs[visualization_frame["env_index"]],
+            pose,
+        )
 
 
 def play(args):
@@ -313,6 +328,11 @@ def play(args):
                         obs.detach(),
                         robot_index,
                     )
+                    if diagnostics is not None:
+                        diagnostics["height_visualization_frame"] = get_height_visualization_frame(
+                            env,
+                            robot_index,
+                        )
             if PRINT_STUDENT_DIAGNOSTICS and diagnostics is not None and i % diagnostic_print_interval == 0:
                 print_student_diagnostics(diagnostics, i)
             obs, _, rews, dones, infos = env.step(actions.detach())
@@ -327,14 +347,14 @@ def play(args):
                     and env.viewer is not None):
                 draw_reconstructed_heightmap(
                     env,
-                    robot_index,
                     diagnostics["reconstructed_height"],
+                    diagnostics["height_visualization_frame"],
                     reconstructed_height_geometry,
                 )
                 draw_reconstructed_heightmap(
                     env,
-                    robot_index,
                     diagnostics["reconstructed_height_target"],
+                    diagnostics["height_visualization_frame"],
                     reconstructed_height_target_geometry,
                 )
             if (depth_frame_queue is not None
@@ -356,10 +376,12 @@ def play(args):
                     len(env.cfg.terrain.measured_points_x),
                     len(env.cfg.terrain.measured_points_y),
                 )
-                scanned_height = np.rot90(diagnostics["reconstructed_height_target"].reshape(
+                # height_scan stores reference_height - terrain_height. Negate
+                # it so the visualization follows the intuitive high=positive convention.
+                scanned_height = -np.rot90(diagnostics["reconstructed_height_target"].reshape(
                     height_shape
                 ).T.cpu().numpy())
-                reconstructed_height = np.rot90(diagnostics["reconstructed_height"].reshape(
+                reconstructed_height = -np.rot90(diagnostics["reconstructed_height"].reshape(
                     height_shape
                 ).T.cpu().numpy())
                 try:
