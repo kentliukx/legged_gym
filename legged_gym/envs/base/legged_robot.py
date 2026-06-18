@@ -1253,17 +1253,44 @@ class LeggedRobot(BaseTask):
             dtype=torch.float32,
             device=self.device,
         ).repeat(self.num_envs, 1)
-        self.depth_camera_rotation = torch.tensor(
-            self.cfg.sensor.depth_rotation,
-            dtype=torch.float32,
-            device=self.device,
-        ).repeat(self.num_envs, 1)
+        self.depth_camera_rotation = self._get_depth_camera_rotation().repeat(self.num_envs, 1)
         # Converts Warp's z-forward pinhole frame to Isaac Gym's x-forward camera frame.
         self.depth_camera_axis_rotation = torch.tensor(
             [-0.5, 0.5, -0.5, 0.5],
             dtype=torch.float32,
             device=self.device,
         ).repeat(self.num_envs, 1)
+
+    def _get_depth_camera_rotation(self):
+        pitch = torch.tensor(
+            np.deg2rad(float(getattr(self.cfg.sensor, "depth_pitch_deg", 0.0))),
+            dtype=torch.float32,
+            device=self.device,
+        )
+        yaw = torch.tensor(
+            np.deg2rad(float(getattr(self.cfg.sensor, "depth_yaw_deg", 0.0))),
+            dtype=torch.float32,
+            device=self.device,
+        )
+        half_pitch = 0.5 * pitch
+        half_yaw = 0.5 * yaw
+        pitch_rotation = torch.stack(
+            (
+                torch.zeros_like(half_pitch),
+                torch.sin(half_pitch),
+                torch.zeros_like(half_pitch),
+                torch.cos(half_pitch),
+            )
+        ).view(1, 4)
+        yaw_rotation = torch.stack(
+            (
+                torch.zeros_like(half_yaw),
+                torch.zeros_like(half_yaw),
+                torch.sin(half_yaw),
+                torch.cos(half_yaw),
+            )
+        ).view(1, 4)
+        return quat_multiply_xyzw(yaw_rotation, pitch_rotation)
 
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.

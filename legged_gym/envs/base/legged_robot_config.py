@@ -51,7 +51,9 @@ class LeggedRobotCfg(BaseConfig):
         depth_min = 0.1
         depth_max = 3.0
         depth_position = [0.35, 0.0, 0]
-        depth_rotation = [0.0, 0.0, 0.0, 1.0]  # xyzw, relative to base
+        # Relative to the base frame: yaw is around +z, positive pitch looks downward.
+        depth_pitch_deg = 15.0
+        depth_yaw_deg = 0.0
 
     class terrain:
         mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
