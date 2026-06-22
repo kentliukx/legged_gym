@@ -218,7 +218,7 @@ class LeggedRobotCfg(BaseConfig):
         soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.
         soft_torque_limit = 1.
-        base_height_target = 0.3
+        base_height_target = 0.35
         max_contact_force = 150. # forces above this value are penalized
         foot_slip_threshold = 1.0
         half_phase_lower = 0.25

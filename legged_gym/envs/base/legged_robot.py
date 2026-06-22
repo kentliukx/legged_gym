@@ -1380,7 +1380,7 @@ class LeggedRobot(BaseTask):
         for i in range(self.num_envs):
             if hasattr(self, "goal_targets"):
                 target = self.goal_targets[i].cpu().numpy()
-                target_pose = gymapi.Transform(gymapi.Vec3(target[0], target[1], target[2] + 0.1), r=None)
+                target_pose = gymapi.Transform(gymapi.Vec3(target[0], target[1], target[2]), r=None)
                 target_geom = target_reached_geom if self.reached_goal[i, 0] > 0.5 else target_unreached_geom
                 gymutil.draw_lines(target_geom, self.gym, self.viewer, self.envs[i], target_pose)
 

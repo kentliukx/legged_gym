@@ -38,12 +38,12 @@ class GO2LadderCfg( LeggedRobotCfg ):
         pass
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [-2.0, 0.0, 0.3] # x,y,z [m]
+        pos = [-2.0, 0.0, 0.35] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
-            "FL_thigh_joint": 0.8, "FL_hip_joint": 0.3, "FL_calf_joint": -1.6,
-            "FR_thigh_joint": 0.8, "FR_hip_joint": -0.3, "FR_calf_joint": -1.6,
-            "RL_thigh_joint": 0.8, "RL_hip_joint": 0.3, "RL_calf_joint": -1.6,
-            "RR_thigh_joint": 0.8, "RR_hip_joint": -0.3, "RR_calf_joint": -1.6
+            "FL_thigh_joint": 0.7, "FL_hip_joint": 0.1, "FL_calf_joint": -1.7,
+            "FR_thigh_joint": 0.7, "FR_hip_joint": -0.1, "FR_calf_joint": -1.7,
+            "RL_thigh_joint": 0.7, "RL_hip_joint": 0.1, "RL_calf_joint": -1.7,
+            "RR_thigh_joint": 0.7, "RR_hip_joint": -0.1, "RR_calf_joint": -1.7
         }
 
     class control( LeggedRobotCfg.control ):
