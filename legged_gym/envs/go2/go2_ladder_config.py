@@ -73,10 +73,10 @@ class GO2LadderCfg( LeggedRobotCfg ):
 
     class domain_rand( LeggedRobotCfg.domain_rand):
         randomize_friction = True
-        friction_range = [0.5, 1.0]
+        friction_range = [0.2, 1.0]
 
         randomize_base_mass = True
-        added_mass_range = [-1.0, 1.0]
+        added_mass_range = [-1.0, 2.0]
 
         randomize_pd_gains = True
         stiffness_multiplier_range = [0.9, 1.1]
