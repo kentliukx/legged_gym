@@ -47,9 +47,21 @@ class GO2LadderCfg( LeggedRobotCfg ):
         }
 
     class control( LeggedRobotCfg.control ):
+        control_type = 'UNITREE'
         # PD Drive parameters:
         stiffness = {'joint': 25}  # [N*m/rad]
         damping = {'joint': 0.5}     # [N*m*s/rad]
+        min_delay = 0
+        max_delay = 2
+        # Unitree RL Lab Go2HV actuator torque-speed curve.
+        motor_velocity_x1 = 13.5
+        motor_velocity_x2 = 30.0
+        motor_torque_y1 = 20.2
+        motor_torque_y2 = 23.4
+        dof_friction = 0.01
+        motor_static_friction = 0.0
+        motor_dynamic_friction = 0.0
+        motor_friction_activation_velocity = 0.01
 
     class asset( LeggedRobotCfg.asset ):
         file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf"

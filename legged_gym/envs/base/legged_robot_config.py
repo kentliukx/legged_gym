@@ -125,7 +125,7 @@ class LeggedRobotCfg(BaseConfig):
             "joint_b": 0.}
 
     class control:
-        control_type = 'P' # P: position, V: velocity, T: torques
+        control_type = 'P' # P: position, V: velocity, T: torques, UNITREE: Unitree torque-speed limited position PD
         # PD Drive parameters:
         stiffness = {'joint_a': 10.0, 'joint_b': 15.}  # [N*m/rad]
         damping = {'joint_a': 1.0, 'joint_b': 1.5}     # [N*m*s/rad]
@@ -134,6 +134,17 @@ class LeggedRobotCfg(BaseConfig):
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
         use_actuator_network = False
+        min_delay = 0  # [physics steps], actuator command delay lower bound
+        max_delay = 0  # [physics steps], actuator command delay upper bound
+        # Unitree-style actuator torque-speed envelope. Defaults match Go2HV.
+        motor_velocity_x1 = 13.5  # [rad/s], max speed at full torque
+        motor_velocity_x2 = 30.0  # [rad/s], no-load speed
+        motor_torque_y1 = 20.2    # [N*m], torque limit when velocity and torque have same sign
+        motor_torque_y2 = 23.4    # [N*m], torque limit when velocity and torque have opposite signs
+        dof_friction = 0.0
+        motor_static_friction = 0.0
+        motor_dynamic_friction = 0.0
+        motor_friction_activation_velocity = 0.01
 
     class asset:
         file = ""
