@@ -189,7 +189,7 @@ class LeggedRobot(BaseTask):
         self.last_actions[env_ids] = 0.
         self.last_last_actions[env_ids] = 0.
         if hasattr(self, "action_delay_buffer"):
-            self.action_delay_buffer[env_ids] = 0.
+            self.action_delay_buffer[:, env_ids] = 0.
             if self.max_action_delay > 0:
                 self.action_delay_steps[env_ids] = torch.randint(
                     low=self.min_action_delay,
