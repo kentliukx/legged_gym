@@ -87,7 +87,8 @@ class LeggedRobot(BaseTask):
         # step physics and render each frame
         self.render()
         for _ in range(self.cfg.control.decimation):
-            self.torques = self._compute_torques(self.actions).view(self.torques.shape)
+            delayed_actions = self._get_delayed_actions(self.actions)
+            self.torques = self._compute_torques(delayed_actions).view(self.torques.shape)
             self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
             self._apply_base_force_torque_disturbance()
             self.gym.simulate(self.sim)
@@ -187,6 +188,18 @@ class LeggedRobot(BaseTask):
         # reset buffers
         self.last_actions[env_ids] = 0.
         self.last_last_actions[env_ids] = 0.
+        if hasattr(self, "action_delay_buffer"):
+            self.action_delay_buffer[env_ids] = 0.
+            if self.max_action_delay > 0:
+                self.action_delay_steps[env_ids] = torch.randint(
+                    low=self.min_action_delay,
+                    high=self.max_action_delay + 1,
+                    size=(len(env_ids),),
+                    dtype=torch.long,
+                    device=self.device,
+                )
+            else:
+                self.action_delay_steps[env_ids] = 0
         self.last_dof_vel[env_ids] = 0.
         self.feet_air_time[env_ids] = 0.
         self.feet_first_contact[env_ids] = False
@@ -432,6 +445,8 @@ class LeggedRobot(BaseTask):
                 r = self.dof_pos_limits[i, 1] - self.dof_pos_limits[i, 0]
                 self.dof_pos_limits[i, 0] = m - 0.5 * r * self.cfg.rewards.soft_dof_pos_limit
                 self.dof_pos_limits[i, 1] = m + 0.5 * r * self.cfg.rewards.soft_dof_pos_limit
+        if hasattr(self.cfg.control, "dof_friction"):
+            props["friction"][:] = self.cfg.control.dof_friction
         return props
 
     def _process_rigid_body_props(self, props, env_id):
@@ -541,9 +556,38 @@ class LeggedRobot(BaseTask):
             torques = self.p_gains*(actions_scaled - self.dof_vel) - self.d_gains*(self.dof_vel - self.last_dof_vel)/self.sim_params.dt
         elif control_type=="T":
             torques = actions_scaled
+        elif control_type=="UNITREE":
+            torques = self.p_gains*(actions_scaled + self.default_dof_pos - self.dof_pos) - self.d_gains*self.dof_vel
+            same_direction = (self.dof_vel * torques) > 0.0
+            max_torque = torch.where(
+                same_direction,
+                torch.full_like(torques, self.cfg.control.motor_torque_y1),
+                torch.full_like(torques, self.cfg.control.motor_torque_y2),
+            )
+            speed = torch.abs(self.dof_vel)
+            x1 = self.cfg.control.motor_velocity_x1
+            x2 = self.cfg.control.motor_velocity_x2
+            decay_torque = max_torque * (x2 - speed) / max(x2 - x1, 1e-6)
+            torque_limit = torch.where(speed < x1, max_torque, torch.clamp(decay_torque, min=0.0))
+            torque_limit = torch.minimum(torque_limit, self.torque_limits.unsqueeze(0))
+            torques = torch.clip(torques, -torque_limit, torque_limit)
+            friction = (
+                self.cfg.control.motor_static_friction
+                * torch.tanh(self.dof_vel / self.cfg.control.motor_friction_activation_velocity)
+                + self.cfg.control.motor_dynamic_friction * self.dof_vel
+            )
+            return torch.clip(torques - friction, -self.torque_limits, self.torque_limits)
         else:
             raise NameError(f"Unknown controller type: {control_type}")
         return torch.clip(torques, -self.torque_limits, self.torque_limits)
+
+    def _get_delayed_actions(self, actions):
+        if self.max_action_delay <= 0:
+            return actions
+
+        self.action_delay_buffer = torch.roll(self.action_delay_buffer, shifts=1, dims=0)
+        self.action_delay_buffer[0] = actions
+        return self.action_delay_buffer[self.action_delay_steps, self.action_delay_env_ids]
 
     def _reset_dofs(self, env_ids):
         """ Resets DOF position and velocities of selected environmments
@@ -841,6 +885,28 @@ class LeggedRobot(BaseTask):
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.min_action_delay = int(getattr(self.cfg.control, "min_delay", 0))
+        self.max_action_delay = int(getattr(self.cfg.control, "max_delay", 0))
+        if self.min_action_delay < 0 or self.max_action_delay < self.min_action_delay:
+            raise ValueError("control.min_delay and control.max_delay must satisfy 0 <= min_delay <= max_delay")
+        self.action_delay_buffer = torch.zeros(
+            self.max_action_delay + 1,
+            self.num_envs,
+            self.num_actions,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.action_delay_steps = torch.zeros(self.num_envs, dtype=torch.long, device=self.device, requires_grad=False)
+        if self.max_action_delay > 0:
+            self.action_delay_steps[:] = torch.randint(
+                low=self.min_action_delay,
+                high=self.max_action_delay + 1,
+                size=(self.num_envs,),
+                dtype=torch.long,
+                device=self.device,
+            )
+        self.action_delay_env_ids = torch.arange(self.num_envs, dtype=torch.long, device=self.device)
         self.last_dof_vel = torch.zeros_like(self.dof_vel)
         self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13])
         self.commands = torch.zeros(self.num_envs, self.cfg.commands.num_commands, dtype=torch.float, device=self.device, requires_grad=False)
