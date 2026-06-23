@@ -46,12 +46,10 @@ def play(args):
 
     env_cfg.terrain.num_cols = 1
     env_cfg.env.num_envs = 1
-    env_cfg.env.debug_terrain_sampling = False
+    env_cfg.env.debug_terrain_sampling = True
     env_cfg.terrain.border_size = 5
-    env_cfg.terrain.curriculum = True
-    env_cfg.noise.add_noise = False
-    env_cfg.domain_rand.randomize_friction = False
-    env_cfg.domain_rand.push_robots = False
+    env_cfg.terrain.terrain_kwargs["rough_probability"] = 0.2
+    env_cfg.terrain.terrain_kwargs["low_difficulty_probability"] = 0.2
     env_cfg.sim.physx.max_gpu_contact_pairs = 2**20
 
     # prepare environment
