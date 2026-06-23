@@ -52,7 +52,7 @@ class GO2LadderCfg( LeggedRobotCfg ):
         stiffness = {'joint': 25}  # [N*m/rad]
         damping = {'joint': 0.5}     # [N*m*s/rad]
         min_delay = 0
-        max_delay = 2
+        max_delay = 3
         # Unitree RL Lab Go2HV actuator torque-speed curve.
         motor_velocity_x1 = 13.5
         motor_velocity_x2 = 30.0
@@ -73,21 +73,21 @@ class GO2LadderCfg( LeggedRobotCfg ):
 
     class domain_rand( LeggedRobotCfg.domain_rand):
         randomize_friction = True
-        friction_range = [0.2, 1.0]
+        friction_range = [-0.5, 1.5]
 
         randomize_base_mass = True
         added_mass_range = [-1.0, 2.0]
 
         randomize_pd_gains = True
-        stiffness_multiplier_range = [0.9, 1.1]
-        damping_multiplier_range = [0.9, 1.1]
+        stiffness_multiplier_range = [0.8, 1.2]
+        damping_multiplier_range = [0.8, 1.2]
 
         push_robots = False
 
         apply_base_force_torque = True
         base_force_interval_s = 4.
         base_force_duration_s = 2
-        max_base_force = [30., 30., 30.]
+        max_base_force = [20., 20., 20.]
         max_base_torque = [10., 10., 10.]
   
     class rewards( LeggedRobotCfg.rewards ):
