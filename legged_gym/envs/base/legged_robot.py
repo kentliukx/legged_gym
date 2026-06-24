@@ -1660,7 +1660,8 @@ class LeggedRobot(BaseTask):
     def _reward_flat_orientation_when_flat(self):
         goal_reached, _ = self._get_goal_delta()
         flat_mask = self._get_flat_terrain_mask()
-        return flat_mask * (1. + 1. * goal_reached) * torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
+        orientation_mask = torch.maximum(flat_mask, goal_reached)
+        return orientation_mask * (1. + goal_reached) * torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
 
     def _reward_stand_still_contact_when_reached_goal(self):
         goal_reached, _ = self._get_goal_delta()
