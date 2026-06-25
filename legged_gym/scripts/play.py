@@ -215,12 +215,10 @@ def play(args):
 
     env_cfg.terrain.num_cols = 1
     env_cfg.env.num_envs = 1
-    env_cfg.env.debug_terrain_sampling = False
+    env_cfg.env.debug_terrain_sampling = True
     env_cfg.terrain.border_size = 5
-    env_cfg.terrain.curriculum = True
-    env_cfg.noise.add_noise = False
-    env_cfg.domain_rand.randomize_friction = False
-    env_cfg.domain_rand.push_robots = False
+    env_cfg.terrain.terrain_kwargs["rough_probability"] = 0.2
+    env_cfg.terrain.terrain_kwargs["low_difficulty_probability"] = 0.2
     env_cfg.sim.physx.max_gpu_contact_pairs = 2**20
 
     # prepare environment
@@ -364,7 +362,7 @@ def play(args):
             if (depth_frame_queue is not None
                     and depth_process.is_alive()
                     and depth_camera_updated):
-                depth_frame = env.depth_image_buf[robot_index].reshape(
+                depth_frame = env.depth_image_noisy_buf[robot_index].reshape(
                     env.cfg.sensor.depth_height,
                     env.cfg.sensor.depth_width,
                 ).cpu().numpy()
