@@ -50,10 +50,22 @@ class LeggedRobotCfg(BaseConfig):
         depth_update_interval_s = 0.1
         depth_min = 0.1
         depth_max = 3.0
-        depth_position = [0.35, 0.0, 0]
+        depth_position = [0.33, 0.0, 0.08]
         # Relative to the base frame: yaw is around +z, positive pitch looks downward.
         depth_pitch_deg = 15.0
         depth_yaw_deg = 0.0
+        # Per-environment installation error, sampled once when environments are created.
+        depth_position_noise_range = [
+            [-0.02, 0.02],
+            [-0.02, 0.02],
+            [-0.02, 0.02],
+        ]
+        # Roll, pitch, yaw noise ranges in degrees.
+        depth_rotation_noise_deg_range = [
+            [-2, 2],
+            [-5, 5],
+            [-2, 2],
+        ]
 
     class terrain:
         mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
@@ -264,7 +276,9 @@ class LeggedRobotCfg(BaseConfig):
             dof_vel = 1.5
             ang_vel = 0.2
             gravity = 0.05
-            depth_image = 0.02
+            depth_image = 0.03  # [m], per-pixel uniform depth noise
+            depth_dropout_prob = 0.01
+            depth_outlier_prob = 0.002
 
     # viewer camera:
     class viewer:

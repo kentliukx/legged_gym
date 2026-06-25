@@ -342,13 +342,6 @@ class LeggedRobot(BaseTask):
         height_scan_simplified = torch.clip(
                 self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights_simplified, -1, 1) * self.obs_scales.height_measurements
         ladder_obs = self._get_ladder_observations()
-        depth_image_noisy = torch.clamp(
-            self._add_uniform_noise(
-                self.depth_image_buf,
-                self.cfg.noise.noise_scales.depth_image * self.cfg.noise.noise_level,
-            ), 0.0, 1.0,
-        )
-
         obs_parts = [
             # goal
             self.commands * self.commands_scale,
@@ -380,7 +373,7 @@ class LeggedRobot(BaseTask):
             ladder_obs,
 
             # forward depth
-            depth_image_noisy,
+            self.depth_image_noisy_buf,
         ]
 
         self.obs_buf = torch.cat(obs_parts, dim=-1)
@@ -414,7 +407,33 @@ class LeggedRobot(BaseTask):
         return noise_scale
 
     def _add_uniform_noise(self, tensor, noise_scale):
+        if not self.add_noise:
+            return tensor
         return tensor + (2 * torch.rand_like(tensor) - 1) * noise_scale
+
+    def _add_depth_speckle_noise(self, depth):
+        if not self.add_noise:
+            return depth
+
+        dropout_prob = float(getattr(self.cfg.noise.noise_scales, "depth_dropout_prob", 0.0))
+        outlier_prob = float(getattr(self.cfg.noise.noise_scales, "depth_outlier_prob", 0.0))
+        if not 0.0 <= dropout_prob <= 1.0 or not 0.0 <= outlier_prob <= 1.0:
+            raise ValueError("Depth dropout and outlier probabilities must be within [0, 1]")
+        if dropout_prob + outlier_prob > 1.0:
+            raise ValueError("Depth dropout and outlier probabilities must sum to at most 1")
+
+        sample = torch.rand_like(depth)
+        dropout_mask = sample < dropout_prob
+        outlier_mask = (sample >= dropout_prob) & (sample < dropout_prob + outlier_prob)
+        min_depth = float(self.cfg.sensor.depth_min)
+        max_depth = float(self.cfg.sensor.depth_max)
+        noisy_depth = torch.where(
+            dropout_mask,
+            torch.full_like(depth, min_depth),
+            depth,
+        )
+        random_depth = min_depth + torch.rand_like(depth) * (max_depth - min_depth)
+        return torch.where(outlier_mask, random_depth, noisy_depth)
 
     def _update_proprioception_history(self, proprioception):
         self.proprioception_history_buf = torch.roll(self.proprioception_history_buf, shifts=-1, dims=1)
@@ -919,6 +938,7 @@ class LeggedRobot(BaseTask):
             device=self.device,
             requires_grad=False,
         )
+        self.depth_image_noisy_buf = torch.zeros_like(self.depth_image_buf)
         self.depth_camera = None
         self.depth_camera_position = None
         self.depth_camera_rotation = None
@@ -1314,49 +1334,100 @@ class LeggedRobot(BaseTask):
             far_plane=self.cfg.sensor.depth_max,
             device=self.device,
         )
-        self.depth_camera_position = torch.tensor(
+        self.depth_camera_nominal_position = torch.tensor(
             self.cfg.sensor.depth_position,
             dtype=torch.float32,
             device=self.device,
         ).repeat(self.num_envs, 1)
-        self.depth_camera_rotation = self._get_depth_camera_rotation().repeat(self.num_envs, 1)
+        self.depth_camera_position = torch.empty_like(self.depth_camera_nominal_position)
+        self.depth_camera_rotation = torch.empty(
+            self.num_envs, 4, dtype=torch.float32, device=self.device
+        )
         # Converts Warp's z-forward pinhole frame to Isaac Gym's x-forward camera frame.
         self.depth_camera_axis_rotation = torch.tensor(
             [-0.5, 0.5, -0.5, 0.5],
             dtype=torch.float32,
             device=self.device,
         ).repeat(self.num_envs, 1)
+        self._randomize_depth_camera_extrinsics(
+            torch.arange(self.num_envs, dtype=torch.long, device=self.device)
+        )
 
-    def _get_depth_camera_rotation(self):
-        pitch = torch.tensor(
-            np.deg2rad(float(getattr(self.cfg.sensor, "depth_pitch_deg", 0.0))),
+    def _randomize_depth_camera_extrinsics(self, env_ids):
+        if len(env_ids) == 0:
+            return
+
+        position_ranges = torch.as_tensor(
+            self.cfg.sensor.depth_position_noise_range,
             dtype=torch.float32,
             device=self.device,
         )
-        yaw = torch.tensor(
-            np.deg2rad(float(getattr(self.cfg.sensor, "depth_yaw_deg", 0.0))),
+        rotation_ranges = torch.as_tensor(
+            self.cfg.sensor.depth_rotation_noise_deg_range,
             dtype=torch.float32,
             device=self.device,
         )
+        if position_ranges.shape != (3, 2) or rotation_ranges.shape != (3, 2):
+            raise ValueError("Depth camera position and rotation noise ranges must have shape [3, 2]")
+        if torch.any(position_ranges[:, 0] > position_ranges[:, 1]):
+            raise ValueError("Depth camera position noise lower bounds must not exceed upper bounds")
+        if torch.any(rotation_ranges[:, 0] > rotation_ranges[:, 1]):
+            raise ValueError("Depth camera rotation noise lower bounds must not exceed upper bounds")
+
+        position_noise = position_ranges[:, 0] + torch.rand(
+            len(env_ids), 3, device=self.device
+        ) * (position_ranges[:, 1] - position_ranges[:, 0])
+        rotation_noise_deg = rotation_ranges[:, 0] + torch.rand(
+            len(env_ids), 3, device=self.device
+        ) * (rotation_ranges[:, 1] - rotation_ranges[:, 0])
+
+        self.depth_camera_position[env_ids] = (
+            self.depth_camera_nominal_position[env_ids] + position_noise
+        )
+        roll = torch.deg2rad(rotation_noise_deg[:, 0])
+        pitch = torch.deg2rad(
+            rotation_noise_deg[:, 1] + float(getattr(self.cfg.sensor, "depth_pitch_deg", 0.0))
+        )
+        yaw = torch.deg2rad(
+            rotation_noise_deg[:, 2] + float(getattr(self.cfg.sensor, "depth_yaw_deg", 0.0))
+        )
+        self.depth_camera_rotation[env_ids] = self._quat_from_euler_xyz(roll, pitch, yaw)
+
+    def _quat_from_euler_xyz(self, roll, pitch, yaw):
+        half_roll = 0.5 * roll
         half_pitch = 0.5 * pitch
         half_yaw = 0.5 * yaw
+        roll_rotation = torch.stack(
+            (
+                torch.sin(half_roll),
+                torch.zeros_like(half_roll),
+                torch.zeros_like(half_roll),
+                torch.cos(half_roll),
+            ),
+            dim=-1,
+        )
         pitch_rotation = torch.stack(
             (
                 torch.zeros_like(half_pitch),
                 torch.sin(half_pitch),
                 torch.zeros_like(half_pitch),
                 torch.cos(half_pitch),
-            )
-        ).view(1, 4)
+            ),
+            dim=-1,
+        )
         yaw_rotation = torch.stack(
             (
                 torch.zeros_like(half_yaw),
                 torch.zeros_like(half_yaw),
                 torch.sin(half_yaw),
                 torch.cos(half_yaw),
-            )
-        ).view(1, 4)
-        return quat_multiply_xyzw(yaw_rotation, pitch_rotation)
+            ),
+            dim=-1,
+        )
+        return quat_multiply_xyzw(
+            quat_multiply_xyzw(yaw_rotation, pitch_rotation),
+            roll_rotation,
+        )
 
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
@@ -1693,9 +1764,16 @@ class LeggedRobot(BaseTask):
         depth = self.depth_camera.render(camera_positions, camera_orientations)
         depth = torch.nan_to_num(depth, nan=max_depth, posinf=max_depth, neginf=max_depth)
         depth = torch.clamp(depth, min=min_depth, max=max_depth)
-        self.depth_image_buf[:] = (
-            (depth - min_depth) / max(max_depth - min_depth, 1e-6)
-        ).reshape(self.num_envs, -1)
+        self.depth_image_buf[:] = depth.reshape(self.num_envs, -1)
+        noisy_depth = torch.clamp(
+            self._add_uniform_noise(
+                self.depth_image_buf,
+                self.cfg.noise.noise_scales.depth_image * self.cfg.noise.noise_level,
+            ),
+            min=min_depth,
+            max=max_depth,
+        )
+        self.depth_image_noisy_buf[:] = self._add_depth_speckle_noise(noisy_depth)
 
     def _reward_position_tracking(self):
         goal_reached, goal_dist = self._get_goal_delta()
