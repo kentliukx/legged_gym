@@ -211,8 +211,8 @@ class LeggedRobotCfg(BaseConfig):
             # Shaping rewards
             flat_orientation_when_flat = -1.0
             foot_slippage = -0.2
-            feet_air_time = 0.5
-            feet_ground_time = 0.5
+            feet_air_time = 1
+            feet_ground_time = 1
             excess_feet_air_time = -5
             contact_symmetry = 0.1
             feet_contact_forces = -0.01
@@ -221,11 +221,11 @@ class LeggedRobotCfg(BaseConfig):
             stand_still_contact_when_reached_goal = -0.5
 
             # Slow movement rewards
-            action_rate = -0.01
-            action_smoothness = -0.01
-            torques = -5e-5
-            dof_vel = -1e-4
-            dof_acc = -5e-8
+            action_rate = -0.02
+            action_smoothness = -0.02
+            torques = -1e-4
+            dof_vel = -2e-4
+            dof_acc = -1e-7
             dof_pos_limits = -5
 
             # Unused rewards
