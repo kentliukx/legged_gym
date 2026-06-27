@@ -424,7 +424,7 @@ class LeggedRobot(BaseTask):
         max_depth = float(self.cfg.sensor.depth_max)
         noisy_depth = torch.where(
             dropout_mask,
-            torch.full_like(depth, min_depth),
+            torch.full_like(depth, max_depth),
             depth,
         )
         random_depth = min_depth + torch.rand_like(depth) * (max_depth - min_depth)
