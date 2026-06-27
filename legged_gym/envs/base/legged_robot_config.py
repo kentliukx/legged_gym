@@ -56,9 +56,9 @@ class LeggedRobotCfg(BaseConfig):
         depth_yaw_deg = 0.0
         # Per-environment installation error, sampled once when environments are created.
         depth_position_noise_range = [
-            [-0.02, 0.02],
-            [-0.02, 0.02],
-            [-0.02, 0.02],
+            [-0.03, 0.03],
+            [-0.03, 0.03],
+            [-0.03, 0.03],
         ]
         # Roll, pitch, yaw noise ranges in degrees.
         depth_rotation_noise_deg_range = [
@@ -277,8 +277,8 @@ class LeggedRobotCfg(BaseConfig):
             ang_vel = 0.2
             gravity = 0.05
             depth_image = 0.03  # [m], per-pixel uniform depth noise
-            depth_dropout_prob = 0.01
-            depth_outlier_prob = 0.002
+            depth_dropout_prob = 0.02
+            depth_outlier_prob = 0.005
 
     # viewer camera:
     class viewer:
