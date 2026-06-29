@@ -107,7 +107,7 @@ class LeggedRobotCfg(BaseConfig):
             "rough_height_range": (-0.04, 0),
             "rough_grid_size": 0.1,
         }
-        max_init_ladder_level = 5 # starting ladder curriculum state
+        max_init_ladder_level = 9 # starting ladder curriculum state
         terrain_length = 8.
         terrain_width = 8.
         num_rows= 10 # number of terrain rows (levels)
@@ -206,15 +206,15 @@ class LeggedRobotCfg(BaseConfig):
 
             # Slow movement rewards
             lin_vel_z = -2
-            ang_vel_xy = -0.02
+            ang_vel_xy = -0.05
 
             # Shaping rewards
-            flat_orientation_when_flat = -1.0
+            flat_orientation_when_flat = -5.0
             foot_slippage = -0.2
             feet_air_time = 1
             feet_ground_time = 1
             excess_feet_air_time = -5
-            contact_symmetry = 0.1
+            contact_symmetry = 0.05
             feet_contact_forces = -0.01
             collision = -1
             stand_still_when_reached_goal = -0.5
@@ -223,9 +223,9 @@ class LeggedRobotCfg(BaseConfig):
             # Slow movement rewards
             action_rate = -0.02
             action_smoothness = -0.02
-            torques = -1e-4
-            dof_vel = -2e-4
-            dof_acc = -1e-7
+            torques = -2e-4
+            dof_vel = -5e-4
+            dof_acc = -2e-7
             dof_pos_limits = -5
 
             # Unused rewards
@@ -319,7 +319,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.01
+        entropy_coef = 0.005
         num_learning_epochs = 5
         num_mini_batches = 16 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-3 #5.e-4
