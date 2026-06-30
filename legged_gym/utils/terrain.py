@@ -104,6 +104,7 @@ class Terrain:
                                       bar_mesh_file,
                                       side_bar_mesh_file,
                                       bar_spacing=0.3,
+                                      bar_position_noise_std=0.0,
                                       bar_count=10,
                                       ladder_angle=0.0,
                                       bar_x_scale=(3.0, 1.0),
@@ -166,6 +167,7 @@ class Terrain:
                     ladder_level=i,
                     max_ladder_level=self.cfg.num_rows - 1,
                     bar_spacing=tile_bar_spacing,
+                    bar_position_noise_std=bar_position_noise_std,
                     bar_count=bar_count,
                     ladder_angle=tile_ladder_angle,
                     bar_x_scale=bar_x_scale,
@@ -312,6 +314,7 @@ def generate_ladder_bar_mesh(env_length,
                              ladder_level,
                              max_ladder_level,
                              bar_spacing=0.3,
+                             bar_position_noise_std=0.0,
                              bar_count=10,
                              ladder_angle=0.0,
                              bar_x_scale=(3.0, 1.0),
@@ -362,6 +365,7 @@ def generate_ladder_bar_mesh(env_length,
         center_x=center_x,
         center_y=center_y,
         bar_spacing=bar_spacing,
+        bar_position_noise_std=bar_position_noise_std,
         bar_count=bar_count,
         ladder_angle=ladder_angle)
     for center in bar_centers:
@@ -532,16 +536,27 @@ def _height_grid_to_mesh(height_grid, env_length, env_width, vertical_scale):
     return vertices.astype(np.float32), np.asarray(triangles, dtype=np.uint32)
 
 
-def _compute_bar_centers(center_x, center_y, bar_spacing, bar_count, ladder_angle):
+def _compute_bar_centers(center_x,
+                         center_y,
+                         bar_spacing,
+                         bar_position_noise_std,
+                         bar_count,
+                         ladder_angle):
     angle_rad = np.deg2rad(ladder_angle)
-    ground_spacing = bar_spacing * np.cos(angle_rad)
-    height_spacing = bar_spacing * np.sin(angle_rad)
+    direction = np.asarray([np.cos(angle_rad), 0.0, np.sin(angle_rad)], dtype=np.float32)
+    noise_std = float(bar_position_noise_std)
+    if noise_std < 0.0:
+        raise ValueError("bar_position_noise_std must be non-negative")
+
+    offsets = np.zeros(bar_count, dtype=np.float32)
+    if noise_std > 0.0:
+        offsets = np.random.normal(0.0, noise_std, size=bar_count).astype(np.float32)
 
     centers = []
     for bar_idx in range(bar_count):
         # Extending the ladder line backward intersects the ground at center_x.
-        step = bar_idx + 1
-        centers.append([center_x + step * ground_spacing, center_y, step * height_spacing])
+        distance = (bar_idx + 1) * bar_spacing + offsets[bar_idx]
+        centers.append(np.asarray([center_x, center_y, 0.0], dtype=np.float32) + distance * direction)
     return np.asarray(centers, dtype=np.float32)
 
 
