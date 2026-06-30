@@ -120,6 +120,11 @@ class Terrain:
                                       low_difficulty_probability=0.0,
                                       rough_height_range=(0.02, 0.08),
                                       rough_grid_size=0.1,
+                                      edge_obstacle_count=0,
+                                      edge_obstacle_abs_y_min=2.0,
+                                      edge_obstacle_margin=0.35,
+                                      edge_obstacle_height=(0.2, 0.8),
+                                      edge_obstacle_radius=(0.08, 0.22),
                                       add_side_rails=True,
                                       difficulty=1.0,
         ):
@@ -209,6 +214,25 @@ class Terrain:
                     dtype=np.int16)
 
             ground_vertices, ground_triangles = make_ground_mesh(self.env_length, self.env_width)
+            obstacle_vertices, obstacle_triangles = generate_edge_obstacle_mesh(
+                env_length=self.env_length,
+                env_width=self.env_width,
+                obstacle_count=edge_obstacle_count,
+                abs_y_min=edge_obstacle_abs_y_min,
+                margin=edge_obstacle_margin,
+                height_range=edge_obstacle_height,
+                radius_range=edge_obstacle_radius,
+            )
+            if obstacle_vertices.shape[0] > 0:
+                if local_vertices.shape[0] == 0:
+                    local_vertices = obstacle_vertices
+                    local_triangles = obstacle_triangles
+                else:
+                    local_triangles = np.concatenate(
+                        (local_triangles, obstacle_triangles + local_vertices.shape[0]),
+                        axis=0,
+                    )
+                    local_vertices = np.concatenate((local_vertices, obstacle_vertices), axis=0)
             if local_vertices.shape[0] == 0:
                 local_vertices = ground_vertices
                 local_triangles = ground_triangles
@@ -501,6 +525,63 @@ def generate_random_rough_mesh(env_length,
     return vertices, triangles, height_field, platform_center
 
 
+def generate_edge_obstacle_mesh(env_length,
+                                env_width,
+                                obstacle_count=0,
+                                abs_y_min=2.0,
+                                margin=0.35,
+                                height_range=(0.2, 0.8),
+                                radius_range=(0.08, 0.22)):
+    obstacle_count = int(round(_sample_range(obstacle_count)))
+    if obstacle_count <= 0:
+        return np.zeros((0, 3), dtype=np.float32), np.zeros((0, 3), dtype=np.uint32)
+
+    center_y = 0.5 * env_width
+    abs_y_min = max(0.0, float(abs_y_min))
+    margin = max(0.0, float(margin))
+    lower_y_max = center_y - abs_y_min
+    upper_y_min = center_y + abs_y_min
+    side_ranges = []
+    if margin < lower_y_max:
+        side_ranges.append((margin, lower_y_max))
+    if upper_y_min < env_width - margin:
+        side_ranges.append((upper_y_min, env_width - margin))
+    if not side_ranges:
+        return np.zeros((0, 3), dtype=np.float32), np.zeros((0, 3), dtype=np.uint32)
+
+    vertices = []
+    triangles = []
+    for _ in range(obstacle_count):
+        x = np.random.uniform(margin, max(margin, env_length - margin))
+        y_low, y_high = side_ranges[np.random.randint(len(side_ranges))]
+        y = np.random.uniform(y_low, y_high)
+        height = _sample_range(height_range)
+        radius = _sample_range(radius_range)
+        shape = np.random.choice(("box", "cylinder", "triangular_prism"))
+
+        if shape == "box":
+            size_x = radius * np.random.uniform(1.0, 2.0)
+            size_y = radius * np.random.uniform(1.0, 2.0)
+            _append_box_mesh(vertices, triangles, center=(x, y, 0.5 * height), size=(size_x, size_y, height))
+        elif shape == "cylinder":
+            _append_cylinder_mesh(vertices, triangles, center=(x, y), radius=radius, height=height, segments=12)
+        else:
+            length = radius * np.random.uniform(1.0, 2.0)
+            width = radius * np.random.uniform(1.0, 2.0)
+            yaw = np.random.uniform(-np.pi, np.pi)
+            _append_triangular_prism_mesh(
+                vertices,
+                triangles,
+                center=(x, y, 0.0),
+                length=length,
+                width=width,
+                height=height,
+                yaw=yaw,
+            )
+
+    return np.asarray(vertices, dtype=np.float32), np.asarray(triangles, dtype=np.uint32)
+
+
 def _rasterize_rough_height_grid(height_grid,
                                  num_rows,
                                  num_cols,
@@ -571,6 +652,95 @@ def _append_ground_mesh(vertices, triangles, env_length, env_width, z=0.0):
     triangles.extend([
         [base_idx + 0, base_idx + 1, base_idx + 2],
         [base_idx + 0, base_idx + 2, base_idx + 3],
+    ])
+
+
+def _append_box_mesh(vertices, triangles, center, size):
+    center = np.asarray(center, dtype=np.float32)
+    size = np.asarray(size, dtype=np.float32)
+    half = 0.5 * size
+    base_idx = len(vertices)
+    vertices.extend([
+        [center[0] - half[0], center[1] - half[1], center[2] - half[2]],
+        [center[0] + half[0], center[1] - half[1], center[2] - half[2]],
+        [center[0] + half[0], center[1] + half[1], center[2] - half[2]],
+        [center[0] - half[0], center[1] + half[1], center[2] - half[2]],
+        [center[0] - half[0], center[1] - half[1], center[2] + half[2]],
+        [center[0] + half[0], center[1] - half[1], center[2] + half[2]],
+        [center[0] + half[0], center[1] + half[1], center[2] + half[2]],
+        [center[0] - half[0], center[1] + half[1], center[2] + half[2]],
+    ])
+    triangles.extend([
+        [base_idx + 4, base_idx + 5, base_idx + 6],
+        [base_idx + 4, base_idx + 6, base_idx + 7],
+        [base_idx + 0, base_idx + 2, base_idx + 1],
+        [base_idx + 0, base_idx + 3, base_idx + 2],
+        [base_idx + 0, base_idx + 1, base_idx + 5],
+        [base_idx + 0, base_idx + 5, base_idx + 4],
+        [base_idx + 1, base_idx + 2, base_idx + 6],
+        [base_idx + 1, base_idx + 6, base_idx + 5],
+        [base_idx + 2, base_idx + 3, base_idx + 7],
+        [base_idx + 2, base_idx + 7, base_idx + 6],
+        [base_idx + 3, base_idx + 0, base_idx + 4],
+        [base_idx + 3, base_idx + 4, base_idx + 7],
+    ])
+
+
+def _append_cylinder_mesh(vertices, triangles, center, radius, height, segments=12):
+    center = np.asarray(center, dtype=np.float32)
+    segments = max(6, int(segments))
+    base_idx = len(vertices)
+    bottom_center_idx = base_idx
+    top_center_idx = base_idx + 1
+    vertices.extend([
+        [center[0], center[1], 0.0],
+        [center[0], center[1], height],
+    ])
+    for idx in range(segments):
+        angle = 2.0 * np.pi * idx / segments
+        x = center[0] + radius * np.cos(angle)
+        y = center[1] + radius * np.sin(angle)
+        vertices.append([x, y, 0.0])
+        vertices.append([x, y, height])
+
+    for idx in range(segments):
+        next_idx = (idx + 1) % segments
+        bottom = base_idx + 2 + 2 * idx
+        top = bottom + 1
+        next_bottom = base_idx + 2 + 2 * next_idx
+        next_top = next_bottom + 1
+        triangles.extend([
+            [bottom_center_idx, next_bottom, bottom],
+            [top_center_idx, top, next_top],
+            [bottom, next_bottom, next_top],
+            [bottom, next_top, top],
+        ])
+
+
+def _append_triangular_prism_mesh(vertices, triangles, center, length, width, height, yaw=0.0):
+    center = np.asarray(center, dtype=np.float32)
+    base_xy = np.asarray([
+        [-0.5 * length, -0.5 * width],
+        [0.5 * length, 0.0],
+        [-0.5 * length, 0.5 * width],
+    ], dtype=np.float32)
+    cos_yaw = np.cos(yaw)
+    sin_yaw = np.sin(yaw)
+    rotation = np.asarray([[cos_yaw, -sin_yaw], [sin_yaw, cos_yaw]], dtype=np.float32)
+    base_xy = base_xy @ rotation.T + center[:2]
+
+    base_idx = len(vertices)
+    vertices.extend([[xy[0], xy[1], 0.0] for xy in base_xy])
+    vertices.extend([[xy[0], xy[1], height] for xy in base_xy])
+    triangles.extend([
+        [base_idx + 0, base_idx + 2, base_idx + 1],
+        [base_idx + 3, base_idx + 4, base_idx + 5],
+        [base_idx + 0, base_idx + 1, base_idx + 4],
+        [base_idx + 0, base_idx + 4, base_idx + 3],
+        [base_idx + 1, base_idx + 2, base_idx + 5],
+        [base_idx + 1, base_idx + 5, base_idx + 4],
+        [base_idx + 2, base_idx + 0, base_idx + 3],
+        [base_idx + 2, base_idx + 3, base_idx + 5],
     ])
 
 

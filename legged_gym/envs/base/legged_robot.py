@@ -691,12 +691,41 @@ class LeggedRobot(BaseTask):
         else:
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
+
+        self._randomize_rough_spawn_yaw(env_ids)
+        self.base_quat[env_ids] = self.root_states[env_ids, 3:7]
+        self.projected_gravity[env_ids] = quat_rotate_inverse(self.base_quat[env_ids], self.gravity_vec[env_ids])
         # base velocities
         self.root_states[env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6), device=self.device) # [7:10]: lin vel, [10:13]: ang vel
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
                                                      gymtorch.unwrap_tensor(self.root_states),
                                                      gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+
+    def _randomize_rough_spawn_yaw(self, env_ids):
+        if not hasattr(self, "terrain_ladder_mask"):
+            return
+        is_ladder = self.terrain_ladder_mask[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+        rough_env_ids = env_ids[~is_ladder]
+        if len(rough_env_ids) == 0:
+            return
+
+        yaw = torch_rand_float(
+            -np.deg2rad(30.0),
+            np.deg2rad(30.0),
+            (len(rough_env_ids), 1),
+            device=self.device,
+        ).squeeze(-1)
+        half_yaw = 0.5 * yaw
+        self.root_states[rough_env_ids, 3:7] = torch.stack(
+            (
+                torch.zeros_like(half_yaw),
+                torch.zeros_like(half_yaw),
+                torch.sin(half_yaw),
+                torch.cos(half_yaw),
+            ),
+            dim=1,
+        )
 
     def _push_robots(self):
         """ Random pushes the robots. Emulates an impulse by setting a randomized base velocity. 
@@ -1506,12 +1535,9 @@ class LeggedRobot(BaseTask):
         if len(rough_env_ids) == 0:
             return
 
-        target_angle = (torch.rand(len(rough_env_ids), device=self.device) - 0.5) * np.deg2rad(60.0)
-        direction = torch.stack((torch.cos(target_angle), torch.sin(target_angle)), dim=1)
-        max_distance_x = (0.5 * self.terrain.env_length) / direction[:, 0].clamp(min=1e-6)
-        max_distance_y = torch.full_like(max_distance_x, 0.5 * self.terrain.env_width)
-        side_distance = max_distance_y / torch.abs(direction[:, 1]).clamp(min=1e-6)
-        max_distance = torch.minimum(max_distance_x, side_distance)
+        direction = torch.zeros(len(rough_env_ids), 2, device=self.device)
+        direction[:, 0] = 1.0
+        max_distance = torch.full((len(rough_env_ids),), 0.5 * self.terrain.env_length, device=self.device)
         min_distance = torch.minimum(torch.full_like(max_distance, 0.5), 0.5 * max_distance)
         target_distance = min_distance + torch.rand(len(rough_env_ids), device=self.device) * (max_distance - min_distance)
         target_offsets = direction * target_distance.unsqueeze(1)

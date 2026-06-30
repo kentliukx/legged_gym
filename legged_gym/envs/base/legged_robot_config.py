@@ -107,6 +107,11 @@ class LeggedRobotCfg(BaseConfig):
             "low_difficulty_probability": 0.3,
             "rough_height_range": (-0.04, 0),
             "rough_grid_size": 0.1,
+            "edge_obstacle_count": (40, 50),
+            "edge_obstacle_abs_y_min": 0.7,
+            "edge_obstacle_margin": 1,
+            "edge_obstacle_height": (0.5, 1.5),
+            "edge_obstacle_radius": (0.1, 0.3),
         }
         max_init_ladder_level = 9 # starting ladder curriculum state
         terrain_length = 8.
