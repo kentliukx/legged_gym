@@ -1706,6 +1706,14 @@ class LeggedRobot(BaseTask):
         local_height_std = torch.std(selected_heights, dim=1, unbiased=False)
         return (local_height_std < self.cfg.rewards.flat_height_std_threshold).float()
 
+    def _get_local_flat_height(self):
+        if not self.cfg.terrain.measure_heights:
+            return torch.zeros(self.num_envs, device=self.device)
+        x_coords = self.height_points[0, :, 0]
+        y_coords = self.height_points[0, :, 1]
+        local_mask = (x_coords >= -0.1) & (x_coords <= 0.5) & (torch.abs(y_coords) <= 0.2)
+        return torch.mean(self.measured_heights[:, local_mask], dim=1)
+
     def _update_difficulty(self, env_ids=None):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
@@ -1797,6 +1805,17 @@ class LeggedRobot(BaseTask):
             foot_lin_vel_world.reshape(-1, 3)
         ).view(self.num_envs, len(self.feet_indices), 3)
         return torch.sum(foot_contacts * torch.norm(foot_lin_vel_base[:, :, :2], dim=2), dim=1)
+
+    def _reward_foot_clearance(self):
+        # Matches the IsaacLab Go2 term: penalize swing feet away from a target
+        # clearance, weighted by horizontal foot speed.
+        foot_pos = self.rigid_body_states[:, self.feet_indices, :3]
+        foot_vel = self.rigid_body_states[:, self.feet_indices, 7:10]
+        ground_height = self._get_local_flat_height().unsqueeze(1)
+        foot_height = foot_pos[:, :, 2] - ground_height
+        foot_xy_speed = torch.norm(foot_vel[:, :, :2], dim=-1)
+        clearance_error = torch.square(self.cfg.rewards.foot_clearance_target - foot_height)
+        return torch.sum(clearance_error * foot_xy_speed, dim=1) * self._get_flat_terrain_mask()
 
     def _reward_feet_air_time(self):
         # Reward moderate air time and penalize overly long swing time.
