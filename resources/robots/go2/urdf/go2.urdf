@@ -417,7 +417,7 @@
     <child link="FL_end2" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="FL_foot">
+  <link name="FL_foot_front">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <mass value="0.016257741982327174" />
@@ -439,13 +439,13 @@
       </geometry>
     </collision>
   </link>
-  <joint name="FL_foot_joint" type="fixed">
+  <joint name="FL_foot_front_joint" type="fixed" dont_collapse="true">
     <origin xyz="0 0 -0.015" rpy="0 0 0" />
     <parent link="FL_end1" />
-    <child link="FL_foot" />
+    <child link="FL_foot_front" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="FL_foot1">
+  <link name="FL_foot_rear">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <mass value="0.016257741982327174" />
@@ -467,10 +467,10 @@
       </geometry>
     </collision>
   </link>
-  <joint name="FL_foot1_joint" type="fixed">
+  <joint name="FL_foot_rear_joint" type="fixed">
     <origin xyz="0 0 0.015" rpy="0 0 0" />
     <parent link="FL_end2" />
-    <child link="FL_foot1" />
+    <child link="FL_foot_rear" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="FR_hip">
@@ -686,7 +686,7 @@
     <child link="FR_end2" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="FR_foot">
+  <link name="FR_foot_front">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <mass value="0.016257741982327174" />
@@ -708,13 +708,13 @@
       </geometry>
     </collision>
   </link>
-  <joint name="FR_foot_joint" type="fixed">
+  <joint name="FR_foot_front_joint" type="fixed" dont_collapse="true">
     <origin xyz="0 0 -0.015" rpy="0 0 0" />
     <parent link="FR_end1" />
-    <child link="FR_foot" />
+    <child link="FR_foot_front" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="FR_foot1">
+  <link name="FR_foot_rear">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <mass value="0.016257741982327174" />
@@ -736,10 +736,10 @@
       </geometry>
     </collision>
   </link>
-  <joint name="FR_foot1_joint" type="fixed">
+  <joint name="FR_foot_rear_joint" type="fixed">
     <origin xyz="0 0 0.015" rpy="0 0 0" />
     <parent link="FR_end2" />
-    <child link="FR_foot1" />
+    <child link="FR_foot_rear" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="RL_hip">
@@ -955,7 +955,7 @@
     <child link="RL_end3" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="RL_foot">
+  <link name="RL_foot_front">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <mass value="0.016257741982327174" />
@@ -977,13 +977,13 @@
       </geometry>
     </collision>
   </link>
-  <joint name="RL_foot_joint" type="fixed">
+  <joint name="RL_foot_front_joint" type="fixed" dont_collapse="true">
     <origin xyz="0 0 -0.015" rpy="0 0 0" />
     <parent link="RL_end" />
-    <child link="RL_foot" />
+    <child link="RL_foot_front" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="RL_foot1">
+  <link name="RL_foot_rear">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <mass value="0.016257741982327174" />
@@ -1005,10 +1005,10 @@
       </geometry>
     </collision>
   </link>
-  <joint name="RL_foot1_joint" type="fixed">
+  <joint name="RL_foot_rear_joint" type="fixed">
     <origin xyz="0 0 0.015" rpy="0 0 0" />
     <parent link="RL_end3" />
-    <child link="RL_foot1" />
+    <child link="RL_foot_rear" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="RR_hip">
@@ -1224,7 +1224,7 @@
     <child link="RR_end3" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="RR_foot">
+  <link name="RR_foot_front">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <mass value="0.016257741982327174" />
@@ -1246,13 +1246,13 @@
       </geometry>
     </collision>
   </link>
-  <joint name="RR_foot_joint" type="fixed">
+  <joint name="RR_foot_front_joint" type="fixed" dont_collapse="true">
     <origin xyz="0 0 -0.015" rpy="0 0 0" />
     <parent link="RR_end" />
-    <child link="RR_foot" />
+    <child link="RR_foot_front" />
     <axis xyz="0 0 0" />
   </joint>
-  <link name="RR_foot1">
+  <link name="RR_foot_rear">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <mass value="0.016257741982327174" />
@@ -1274,10 +1274,10 @@
       </geometry>
     </collision>
   </link>
-  <joint name="RR_foot1_joint" type="fixed">
+  <joint name="RR_foot_rear_joint" type="fixed">
     <origin xyz="0 0 0.015" rpy="0 0 0" />
     <parent link="RR_end3" />
-    <child link="RR_foot1" />
+    <child link="RR_foot_rear" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="imu">
