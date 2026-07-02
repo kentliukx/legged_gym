@@ -33,7 +33,7 @@ from .base_config import BaseConfig
 class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 2048
-        num_observations = 3072
+        num_observations = 2712
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
         proprioception_history_len = 10
@@ -44,9 +44,9 @@ class LeggedRobotCfg(BaseConfig):
 
     class sensor:
         enable_depth_camera = True
-        depth_width = 64
+        depth_width = 54
         depth_height = 36
-        depth_horizontal_fov = 87.0
+        depth_horizontal_fov = 73
         depth_update_interval_s = 0.1
         depth_min = 0.1
         depth_max = 2.0

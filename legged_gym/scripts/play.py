@@ -44,12 +44,12 @@ import numpy as np
 import torch
 
 
-def show_depth_camera(frame_queue, min_depth, max_depth):
+def show_depth_camera(frame_queue, min_depth, max_depth, depth_height, depth_width):
     import matplotlib.pyplot as plt
 
     plt.ion()
     figure, axis = plt.subplots(num="Robot depth camera")
-    image = axis.imshow(np.zeros((36, 64)), cmap="turbo", vmin=min_depth, vmax=max_depth)
+    image = axis.imshow(np.zeros((depth_height, depth_width)), cmap="turbo", vmin=min_depth, vmax=max_depth)
     axis.set_title("Forward depth [m]")
     axis.axis("off")
     figure.colorbar(image, ax=axis, fraction=0.046, pad=0.04)
@@ -295,6 +295,8 @@ def play(args):
                 depth_frame_queue,
                 float(env.cfg.sensor.depth_min),
                 float(env.cfg.sensor.depth_max),
+                int(env.cfg.sensor.depth_height),
+                int(env.cfg.sensor.depth_width),
             ),
             daemon=True,
         )
