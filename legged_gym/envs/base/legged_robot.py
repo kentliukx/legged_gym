@@ -840,6 +840,10 @@ class LeggedRobot(BaseTask):
         upward_velocity = torch.clamp(foot_vel[:, :, 2], min=0.0)
         z_damping = z_up_ratio * xy_speed
         damping_force[:, :, 2] = -compression_scale * z_damping * upward_velocity
+        max_force = float(getattr(cfg, "rubber_foot_max_damping_force", 20.0))
+        if max_force > 0.0:
+            force_norm = torch.norm(damping_force, dim=-1, keepdim=True).clamp(min=1e-6)
+            damping_force = damping_force * torch.clamp(max_force / force_norm, max=1.0)
         self.base_force_tensors[:, self.rubber_indices, :] += damping_force
 
     def _update_terrain_curriculum(self, env_ids):

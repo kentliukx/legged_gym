@@ -95,6 +95,7 @@ class GO2LadderCfg( LeggedRobotCfg ):
         rubber_foot_damping_threshold = 0.03
         rubber_foot_xy_damping = 200.0
         rubber_foot_z_up_damping_xy_ratio = 100.0
+        rubber_foot_max_damping_force = 50.0
 
   
     class rewards( LeggedRobotCfg.rewards ):
