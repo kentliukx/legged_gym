@@ -91,7 +91,7 @@ class GO2LadderCfg( LeggedRobotCfg ):
         max_base_force = [10., 10., 10.]
         max_base_torque = [5., 5., 5.]
 
-        apply_rubber_foot_damping = True
+        apply_rubber_foot_damping = False
         rubber_foot_damping_threshold = 0.03
         rubber_foot_xy_damping = 200.0
         rubber_foot_z_up_damping_xy_ratio = 100.0
