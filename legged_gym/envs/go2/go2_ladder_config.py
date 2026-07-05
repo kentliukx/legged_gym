@@ -67,7 +67,6 @@ class GO2LadderCfg( LeggedRobotCfg ):
         file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf"
         name = "go2"
         foot_name = "effector"
-        rubber_name = "foot_front"
         penalize_contacts_on = ["thigh", "hip"]
         terminate_after_contacts_on = ["base", "Head_upper", "Head_lower"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
@@ -90,12 +89,6 @@ class GO2LadderCfg( LeggedRobotCfg ):
         base_force_duration_s = 2
         max_base_force = [10., 10., 10.]
         max_base_torque = [5., 5., 5.]
-
-        apply_rubber_foot_damping = False
-        rubber_foot_damping_threshold = 0.03
-        rubber_foot_xy_damping = 200.0
-        rubber_foot_z_up_damping_xy_ratio = 100.0
-        rubber_foot_max_damping_force = 50.0
 
   
     class rewards( LeggedRobotCfg.rewards ):

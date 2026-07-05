@@ -91,7 +91,7 @@ class LeggedRobot(BaseTask):
             delayed_actions = self._get_delayed_actions(self.actions)
             self.torques = self._compute_torques(delayed_actions).view(self.torques.shape)
             self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
-            self._apply_external_rigid_body_forces()
+            self._apply_base_force_torque_disturbance()
             self.gym.simulate(self.sim)
             if self.device == 'cpu':
                 self.gym.fetch_results(self.sim, True)
@@ -742,12 +742,6 @@ class LeggedRobot(BaseTask):
             raise ValueError("Base disturbance maxima must be a scalar or a 3-element sequence.")
         return (2.0 * torch.rand(self.num_envs, 3, device=self.device) - 1.0) * max_tensor.view(1, 3)
 
-    def _get_rubber_body_names(self, body_names):
-        rubber_name = getattr(self.cfg.asset, "rubber_name", "")
-        if not rubber_name:
-            return []
-        return sorted(name for name in body_names if rubber_name in name)
-
     def _resample_pd_gains(self, env_ids):
         if len(env_ids) == 0:
             return
@@ -765,20 +759,7 @@ class LeggedRobot(BaseTask):
         self.p_gains[env_ids] = base_p * self.p_gain_multipliers[env_ids]
         self.d_gains[env_ids] = base_d * self.d_gain_multipliers[env_ids]
 
-    def _apply_external_rigid_body_forces(self):
-        self.gym.refresh_rigid_body_state_tensor(self.sim)
-        self.base_force_tensors.zero_()
-        self.base_torque_tensors.zero_()
-        self._accumulate_base_force_torque_disturbance()
-        self._accumulate_rubber_foot_damping()
-        self.gym.apply_rigid_body_force_tensors(
-            self.sim,
-            gymtorch.unwrap_tensor(self.base_force_tensors),
-            gymtorch.unwrap_tensor(self.base_torque_tensors),
-            gymapi.ENV_SPACE,
-        )
-
-    def _accumulate_base_force_torque_disturbance(self):
+    def _apply_base_force_torque_disturbance(self):
         cfg = self.cfg.domain_rand
         if not cfg.apply_base_force_torque:
             return
@@ -794,57 +775,33 @@ class LeggedRobot(BaseTask):
             else:
                 self.base_force_local.zero_()
                 self.base_torque_local.zero_()
+                self.base_force_tensors.zero_()
+                self.base_torque_tensors.zero_()
+                self.gym.apply_rigid_body_force_tensors(
+                    self.sim,
+                    gymtorch.unwrap_tensor(self.base_force_tensors),
+                    gymtorch.unwrap_tensor(self.base_torque_tensors),
+                    gymapi.ENV_SPACE,
+                )
                 self.sim_step_counter += 1
                 return
 
         world_force = quat_apply(self.base_quat, self.base_force_local)
         world_torque = quat_apply(self.base_quat, self.base_torque_local)
 
+        self.base_force_tensors.zero_()
+        self.base_torque_tensors.zero_()
         self.base_force_tensors[:, self.base_body_index, :] = world_force
         self.base_torque_tensors[:, self.base_body_index, :] = world_torque
+        self.gym.apply_rigid_body_force_tensors(
+            self.sim,
+            gymtorch.unwrap_tensor(self.base_force_tensors),
+            gymtorch.unwrap_tensor(self.base_torque_tensors),
+            gymapi.ENV_SPACE,
+        )
 
         self.base_force_torque_steps_remaining -= 1
         self.sim_step_counter += 1
-
-    def _accumulate_rubber_foot_damping(self):
-        cfg = self.cfg.domain_rand
-        if not getattr(cfg, "apply_rubber_foot_damping", False):
-            return
-        if not hasattr(self, "rubber_indices") or len(self.rubber_indices) == 0:
-            return
-        if not isinstance(self.measured_heights, torch.Tensor):
-            return
-
-        rough_mask = self._get_rough_terrain_mask().view(self.num_envs, 1)
-        if torch.count_nonzero(rough_mask).item() == 0:
-            return
-
-        threshold = float(getattr(cfg, "rubber_foot_damping_threshold", 0.03))
-        if threshold <= 0.0:
-            return
-        xy_damping = float(getattr(cfg, "rubber_foot_xy_damping", 0.0))
-        z_up_ratio = float(getattr(cfg, "rubber_foot_z_up_damping_xy_ratio", 0.0))
-        if xy_damping == 0.0 and z_up_ratio == 0.0:
-            return
-
-        foot_pos = self.rigid_body_states[:, self.rubber_indices, :3]
-        foot_vel = self.rigid_body_states[:, self.rubber_indices, 7:10]
-        ground_height = self._get_local_flat_height().view(self.num_envs, 1)
-        foot_height = foot_pos[:, :, 2] - ground_height
-        compression_scale = torch.clamp((threshold - foot_height) / threshold, min=0.0, max=1.0)
-        compression_scale = compression_scale * rough_mask
-
-        xy_speed = torch.norm(foot_vel[:, :, :2], dim=-1)
-        damping_force = torch.zeros_like(foot_vel)
-        damping_force[:, :, :2] = -xy_damping * compression_scale.unsqueeze(-1) * foot_vel[:, :, :2]
-        upward_velocity = torch.clamp(foot_vel[:, :, 2], min=0.0)
-        z_damping = z_up_ratio * xy_speed
-        damping_force[:, :, 2] = -compression_scale * z_damping * upward_velocity
-        max_force = float(getattr(cfg, "rubber_foot_max_damping_force", 20.0))
-        if max_force > 0.0:
-            force_norm = torch.norm(damping_force, dim=-1, keepdim=True).clamp(min=1e-6)
-            damping_force = damping_force * torch.clamp(max_force / force_norm, max=1.0)
-        self.base_force_tensors[:, self.rubber_indices, :] += damping_force
 
     def _update_terrain_curriculum(self, env_ids):
         """ Implements the game-inspired curriculum.
@@ -1325,7 +1282,6 @@ class LeggedRobot(BaseTask):
         else:
             self.symmetry_joint_pair_indices = torch.empty((0, 2), dtype=torch.long, device=self.device)
         feet_names = [s for s in body_names if self.cfg.asset.foot_name in s]
-        rubber_names = self._get_rubber_body_names(body_names)
         penalized_contact_names = []
         for name in self.cfg.asset.penalize_contacts_on:
             penalized_contact_names.extend([s for s in body_names if name in s])
@@ -1366,27 +1322,7 @@ class LeggedRobot(BaseTask):
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
             self.feet_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], feet_names[i])
-        self.rubber_indices = torch.zeros(len(rubber_names), dtype=torch.long, device=self.device, requires_grad=False)
-        for i in range(len(rubber_names)):
-            self.rubber_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], rubber_names[i])
-        self.rubber_name_to_obs_index = {name: i for i, name in enumerate(rubber_names)}
         self.foot_name_to_obs_index = {name: i for i, name in enumerate(feet_names)}
-        rubber_body_index_by_prefix = {
-            name.split("_", 1)[0]: int(self.rubber_indices[i].item())
-            for i, name in enumerate(rubber_names)
-            if "_" in name
-        }
-        self.rubber_indices_by_foot = torch.full(
-            (len(feet_names),),
-            -1,
-            dtype=torch.long,
-            device=self.device,
-            requires_grad=False,
-        )
-        for i, foot_name in enumerate(feet_names):
-            leg_prefix = foot_name.split("_", 1)[0]
-            if leg_prefix in rubber_body_index_by_prefix:
-                self.rubber_indices_by_foot[i] = rubber_body_index_by_prefix[leg_prefix]
 
         self.penalised_contact_indices = torch.zeros(len(penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(penalized_contact_names)):
@@ -1786,12 +1722,6 @@ class LeggedRobot(BaseTask):
     def _get_goal_delta(self):
         return self.reached_goal[:, 0], self.goal_dist
 
-    def _get_rough_terrain_mask(self):
-        if not hasattr(self, "terrain_ladder_mask"):
-            return torch.zeros(self.num_envs, device=self.device)
-        is_ladder = self.terrain_ladder_mask[self.terrain_levels, self.terrain_types]
-        return (~is_ladder).float()
-
     def _get_flat_terrain_mask(self):
         if not self.cfg.terrain.measure_heights:
             return torch.ones(self.num_envs, device=self.device)
@@ -1834,28 +1764,11 @@ class LeggedRobot(BaseTask):
         difficulty = (self.terrain_levels[env_ids].float() - 1.) / float(max_level - 1)
         self.difficulty[env_ids] = torch.clamp(difficulty, 0., 1.)
 
-    def _get_effective_foot_contact_forces(self):
-        forces = self.contact_forces[:, self.feet_indices, :].clone()
-        if not hasattr(self, "rubber_indices_by_foot") or self.rubber_indices_by_foot.numel() == 0:
-            return forces
-
-        has_rubber = self.rubber_indices_by_foot >= 0
-        if torch.count_nonzero(has_rubber).item() == 0:
-            return forces
-
-        matched_rubber_indices = self.rubber_indices_by_foot[has_rubber]
-        rubber_contact = self.contact_forces[:, matched_rubber_indices, :]
-        forces[:, has_rubber, :] += rubber_contact
-        return forces
-
-    def _get_effective_foot_normal_forces(self):
-        return self._get_effective_foot_contact_forces()[:, :, 2]
-
     def _get_foot_contacts(self):
-        return self._get_effective_foot_normal_forces() > self.cfg.rewards.contact_force_threshold
+        return self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.contact_force_threshold
 
     def _get_phase_foot_contacts(self):
-        return self._get_effective_foot_normal_forces() > self.cfg.rewards.phase_contact_force_threshold
+        return self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.phase_contact_force_threshold
 
     def _update_depth_camera_observations(self):
         if not self.cfg.sensor.enable_depth_camera:
@@ -1992,9 +1905,8 @@ class LeggedRobot(BaseTask):
     
     def _reward_stumble(self):
         # Penalize feet hitting vertical surfaces
-        foot_forces = self._get_effective_foot_contact_forces()
-        return torch.any(torch.norm(foot_forces[:, :, :2], dim=2) >\
-             5 *torch.abs(foot_forces[:, :, 2]), dim=1)
+        return torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\
+             5 *torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)
         
     def _reward_stand_still_when_reached_goal(self):
         goal_reached, _ = self._get_goal_delta()
@@ -2021,6 +1933,5 @@ class LeggedRobot(BaseTask):
 
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
-        foot_forces = self._get_effective_foot_contact_forces()
-        return (torch.sum((torch.norm(foot_forces, dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)) \
+        return (torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)) \
             * self._get_flat_terrain_mask()
