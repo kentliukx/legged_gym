@@ -308,8 +308,8 @@
     <link name="FL_effector">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -328,7 +328,7 @@
     </collision>
   </link>
   <joint name="FL_effector_joint" type="fixed" dont_collapse="true">
-    <origin xyz="-0.03 0 -0.04" rpy="0 0.1 0" />
+    <origin xyz="-0.03 0 -0.042" rpy="0 0.12 0" />
     <parent link="FL_calflower" />
     <child link="FL_effector" />
     <axis xyz="0 0 0" />
@@ -336,8 +336,8 @@
   <link name="FL_end">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -364,8 +364,8 @@
   <link name="FL_end1">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -392,8 +392,8 @@
   <link name="FL_end2">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -420,8 +420,8 @@
   <link name="FL_foot_front">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.016257741982327174" />
-      <inertia ixx="1.4631967784094458e-06" ixy="0" ixz="0" iyy="1.4631967784094458e-06" iyz="0" izz="1.4631967784094458e-06" />
+      <mass value="0.0212057504117311" />
+      <inertia ixx="1.908517537055799e-06" ixy="0" ixz="0" iyy="1.908517537055799e-06" iyz="0" izz="1.908517537055799e-06" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -440,7 +440,7 @@
     </collision>
   </link>
   <joint name="FL_foot_front_joint" type="fixed">
-    <origin xyz="0 0 -0.015" rpy="0 0 0" />
+    <origin xyz="-0.003 0 -0.023" rpy="0 0 0" />
     <parent link="FL_end1" />
     <child link="FL_foot_front" />
     <axis xyz="0 0 0" />
@@ -448,8 +448,8 @@
   <link name="FL_foot_rear">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.016257741982327174" />
-      <inertia ixx="1.4631967784094458e-06" ixy="0" ixz="0" iyy="1.4631967784094458e-06" iyz="0" izz="1.4631967784094458e-06" />
+      <mass value="0.0212057504117311" />
+      <inertia ixx="1.908517537055799e-06" ixy="0" ixz="0" iyy="1.908517537055799e-06" iyz="0" izz="1.908517537055799e-06" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -468,7 +468,7 @@
     </collision>
   </link>
   <joint name="FL_foot_rear_joint" type="fixed">
-    <origin xyz="0 0 0.015" rpy="0 0 0" />
+    <origin xyz="-0.003 0 0.023" rpy="0 0 0" />
     <parent link="FL_end2" />
     <child link="FL_foot_rear" />
     <axis xyz="0 0 0" />
@@ -577,8 +577,8 @@
     <link name="FR_effector">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -597,7 +597,7 @@
     </collision>
   </link>
   <joint name="FR_effector_joint" type="fixed" dont_collapse="true">
-    <origin xyz="-0.03 0 -0.04" rpy="0 0.1 0" />
+    <origin xyz="-0.03 0 -0.042" rpy="0 0.12 0" />
     <parent link="FR_calflower" />
     <child link="FR_effector" />
     <axis xyz="0 0 0" />
@@ -605,8 +605,8 @@
   <link name="FR_end">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -633,8 +633,8 @@
   <link name="FR_end1">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -661,8 +661,8 @@
   <link name="FR_end2">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -689,8 +689,8 @@
   <link name="FR_foot_front">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.016257741982327174" />
-      <inertia ixx="1.4631967784094458e-06" ixy="0" ixz="0" iyy="1.4631967784094458e-06" iyz="0" izz="1.4631967784094458e-06" />
+      <mass value="0.0212057504117311" />
+      <inertia ixx="1.908517537055799e-06" ixy="0" ixz="0" iyy="1.908517537055799e-06" iyz="0" izz="1.908517537055799e-06" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -709,7 +709,7 @@
     </collision>
   </link>
   <joint name="FR_foot_front_joint" type="fixed">
-    <origin xyz="0 0 -0.015" rpy="0 0 0" />
+    <origin xyz="-0.003 0 -0.023" rpy="0 0 0" />
     <parent link="FR_end1" />
     <child link="FR_foot_front" />
     <axis xyz="0 0 0" />
@@ -717,8 +717,8 @@
   <link name="FR_foot_rear">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.016257741982327174" />
-      <inertia ixx="1.4631967784094458e-06" ixy="0" ixz="0" iyy="1.4631967784094458e-06" iyz="0" izz="1.4631967784094458e-06" />
+      <mass value="0.0212057504117311" />
+      <inertia ixx="1.908517537055799e-06" ixy="0" ixz="0" iyy="1.908517537055799e-06" iyz="0" izz="1.908517537055799e-06" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -737,7 +737,7 @@
     </collision>
   </link>
   <joint name="FR_foot_rear_joint" type="fixed">
-    <origin xyz="0 0 0.015" rpy="0 0 0" />
+    <origin xyz="-0.003 0 0.023" rpy="0 0 0" />
     <parent link="FR_end2" />
     <child link="FR_foot_rear" />
     <axis xyz="0 0 0" />
@@ -846,8 +846,8 @@
   <link name="RL_effector">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -866,7 +866,7 @@
     </collision>
   </link>
   <joint name="RL_effector_joint" type="fixed" dont_collapse="true">
-    <origin xyz="-0.03 0 -0.04" rpy="0 0.1 0" />
+    <origin xyz="-0.03 0 -0.042" rpy="0 0.12 0" />
     <parent link="RL_calflower" />
     <child link="RL_effector" />
     <axis xyz="0 0 0" />
@@ -874,8 +874,8 @@
   <link name="RL_end">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -902,8 +902,8 @@
   <link name="RL_end2">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -930,8 +930,8 @@
   <link name="RL_end3">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -958,8 +958,8 @@
   <link name="RL_foot_front">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.016257741982327174" />
-      <inertia ixx="1.4631967784094458e-06" ixy="0" ixz="0" iyy="1.4631967784094458e-06" iyz="0" izz="1.4631967784094458e-06" />
+      <mass value="0.0212057504117311" />
+      <inertia ixx="1.908517537055799e-06" ixy="0" ixz="0" iyy="1.908517537055799e-06" iyz="0" izz="1.908517537055799e-06" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -978,7 +978,7 @@
     </collision>
   </link>
   <joint name="RL_foot_front_joint" type="fixed">
-    <origin xyz="0 0 -0.015" rpy="0 0 0" />
+    <origin xyz="-0.003 0 -0.023" rpy="0 0 0" />
     <parent link="RL_end" />
     <child link="RL_foot_front" />
     <axis xyz="0 0 0" />
@@ -986,8 +986,8 @@
   <link name="RL_foot_rear">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.016257741982327174" />
-      <inertia ixx="1.4631967784094458e-06" ixy="0" ixz="0" iyy="1.4631967784094458e-06" iyz="0" izz="1.4631967784094458e-06" />
+      <mass value="0.0212057504117311" />
+      <inertia ixx="1.908517537055799e-06" ixy="0" ixz="0" iyy="1.908517537055799e-06" iyz="0" izz="1.908517537055799e-06" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -1006,7 +1006,7 @@
     </collision>
   </link>
   <joint name="RL_foot_rear_joint" type="fixed">
-    <origin xyz="0 0 0.015" rpy="0 0 0" />
+    <origin xyz="-0.003 0 0.023" rpy="0 0 0" />
     <parent link="RL_end3" />
     <child link="RL_foot_rear" />
     <axis xyz="0 0 0" />
@@ -1115,8 +1115,8 @@
   <link name="RR_effector">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -1135,7 +1135,7 @@
     </collision>
   </link>
   <joint name="RR_effector_joint" type="fixed" dont_collapse="true">
-    <origin xyz="-0.03 0 -0.04" rpy="0 0.1 0" />
+    <origin xyz="-0.03 0 -0.042" rpy="0 0.12 0" />
     <parent link="RR_calflower" />
     <child link="RR_effector" />
     <axis xyz="0 0 0" />
@@ -1143,8 +1143,8 @@
   <link name="RR_end">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -1171,8 +1171,8 @@
   <link name="RR_end2">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -1199,8 +1199,8 @@
   <link name="RR_end3">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.011686724671354032" />
-      <inertia ixx="1.1686724671354032e-06" ixy="0" ixz="0" iyy="1.1686724671354032e-06" iyz="0" izz="5.843362335677016e-07" />
+      <mass value="0.01413716694115407" />
+      <inertia ixx="1.413716694115407e-06" ixy="0" ixz="0" iyy="1.413716694115407e-06" iyz="0" izz="7.068583470577035e-07" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -1227,8 +1227,8 @@
   <link name="RR_foot_front">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.016257741982327174" />
-      <inertia ixx="1.4631967784094458e-06" ixy="0" ixz="0" iyy="1.4631967784094458e-06" iyz="0" izz="1.4631967784094458e-06" />
+      <mass value="0.0212057504117311" />
+      <inertia ixx="1.908517537055799e-06" ixy="0" ixz="0" iyy="1.908517537055799e-06" iyz="0" izz="1.908517537055799e-06" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -1247,7 +1247,7 @@
     </collision>
   </link>
   <joint name="RR_foot_front_joint" type="fixed">
-    <origin xyz="0 0 -0.015" rpy="0 0 0" />
+    <origin xyz="-0.003 0 -0.023" rpy="0 0 0" />
     <parent link="RR_end" />
     <child link="RR_foot_front" />
     <axis xyz="0 0 0" />
@@ -1255,8 +1255,8 @@
   <link name="RR_foot_rear">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <mass value="0.016257741982327174" />
-      <inertia ixx="1.4631967784094458e-06" ixy="0" ixz="0" iyy="1.4631967784094458e-06" iyz="0" izz="1.4631967784094458e-06" />
+      <mass value="0.0212057504117311" />
+      <inertia ixx="1.908517537055799e-06" ixy="0" ixz="0" iyy="1.908517537055799e-06" iyz="0" izz="1.908517537055799e-06" />
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -1275,7 +1275,7 @@
     </collision>
   </link>
   <joint name="RR_foot_rear_joint" type="fixed">
-    <origin xyz="0 0 0.015" rpy="0 0 0" />
+    <origin xyz="-0.003 0 0.023" rpy="0 0 0" />
     <parent link="RR_end3" />
     <child link="RR_foot_rear" />
     <axis xyz="0 0 0" />
