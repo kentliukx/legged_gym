@@ -1729,7 +1729,7 @@ class LeggedRobot(BaseTask):
             return torch.ones(self.num_envs, device=self.device)
         x_coords = self.height_points[0, :, 0]
         y_coords = self.height_points[0, :, 1]
-        local_mask = (x_coords >= -0.1) & (x_coords <= 0.5) & (torch.abs(y_coords) <= 0.2)
+        local_mask = (x_coords >= -0.2) & (x_coords <= 0.4) & (torch.abs(y_coords) <= 0.2)
         selected_heights = self.measured_heights[:, local_mask]
         local_height_std = torch.std(selected_heights, dim=1, unbiased=False)
         return (local_height_std < self.cfg.rewards.flat_height_std_threshold).float()
