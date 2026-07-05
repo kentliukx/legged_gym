@@ -1811,7 +1811,13 @@ class LeggedRobot(BaseTask):
         goal_dir = self.commands[:, :2] / goal_dist.unsqueeze(1).clamp(min=1e-6)
         velocity_xy = self.base_lin_vel[:, :2]
         velocity_norm = torch.norm(velocity_xy, dim=1).clamp(min=1e-6)
-        speed_over = torch.clamp(velocity_norm - self.cfg.rewards.goal_speed_limit, min=0.)
+        flat_mask = self._get_flat_terrain_mask()
+        speed_limit = torch.where(
+            flat_mask > 0.5,
+            torch.full_like(velocity_norm, float(self.cfg.rewards.goal_speed_limit)),
+            torch.full_like(velocity_norm, float(self.cfg.rewards.nonflat_goal_speed_limit)),
+        )
+        speed_over = torch.clamp(velocity_norm - speed_limit, min=0.)
         min_dist_decrease_speed = torch.clamp(self.min_goal_dist - goal_dist, min=0.) / self.dt
         self.min_goal_dist[:] = torch.minimum(self.min_goal_dist, goal_dist)
         heading_error = torch.atan2(goal_dir[:, 1], goal_dir[:, 0])
