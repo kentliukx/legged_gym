@@ -406,19 +406,26 @@ class LeggedRobot(BaseTask):
             return tensor
         return tensor + (2 * torch.rand_like(tensor) - 1) * noise_scale
 
-    def _add_depth_speckle_noise(self, depth):
+    def _add_depth_speckle_noise(self, depth, edge_mask=None):
         if not self.add_noise:
             return depth
 
         dropout_prob = float(getattr(self.cfg.noise.noise_scales, "depth_dropout_prob", 0.0))
         outlier_prob = float(getattr(self.cfg.noise.noise_scales, "depth_outlier_prob", 0.0))
-        if not 0.0 <= dropout_prob <= 1.0 or not 0.0 <= outlier_prob <= 1.0:
-            raise ValueError("Depth dropout and outlier probabilities must be within [0, 1]")
+        edge_dropout_prob = float(getattr(self.cfg.noise.noise_scales, "depth_edge_dropout_prob", 0.0))
+        if (not 0.0 <= dropout_prob <= 1.0
+                or not 0.0 <= outlier_prob <= 1.0
+                or not 0.0 <= edge_dropout_prob <= 1.0):
+            raise ValueError("Depth dropout, edge dropout, and outlier probabilities must be within [0, 1]")
         if dropout_prob + outlier_prob > 1.0:
             raise ValueError("Depth dropout and outlier probabilities must sum to at most 1")
 
         sample = torch.rand_like(depth)
         dropout_mask = sample < dropout_prob
+        if edge_dropout_prob > 0.0:
+            if edge_mask is None:
+                edge_mask = self._get_depth_edge_mask(depth)
+            dropout_mask |= edge_mask & (torch.rand_like(depth) < edge_dropout_prob)
         outlier_mask = (sample >= dropout_prob) & (sample < dropout_prob + outlier_prob)
         min_depth = float(self.cfg.sensor.depth_min)
         max_depth = float(self.cfg.sensor.depth_max)
@@ -429,6 +436,43 @@ class LeggedRobot(BaseTask):
         )
         random_depth = min_depth + torch.rand_like(depth) * (max_depth - min_depth)
         return torch.where(outlier_mask, random_depth, noisy_depth)
+
+    def _get_depth_edge_mask(self, depth):
+        height = int(self.cfg.sensor.depth_height)
+        width = int(self.cfg.sensor.depth_width)
+        depth_image = depth.view(self.num_envs, height, width)
+        edge_threshold = float(getattr(self.cfg.noise.noise_scales, "depth_edge_threshold", 0.08))
+
+        edge_side = int(getattr(self.cfg.noise.noise_scales, "depth_edge_dilation", 0))
+        edge = torch.zeros_like(depth_image, dtype=torch.bool)
+        if edge_side == 0:
+            return edge.view(self.num_envs, -1)
+
+        x_diff = torch.abs(depth_image[:, :, 1:] - depth_image[:, :, :-1]) > edge_threshold
+        y_diff = torch.abs(depth_image[:, 1:, :] - depth_image[:, :-1, :]) > edge_threshold
+
+        x_left_is_nearer = depth_image[:, :, :-1] < depth_image[:, :, 1:]
+        y_top_is_nearer = depth_image[:, :-1, :] < depth_image[:, 1:, :]
+        if edge_side < 0:
+            x_use_left = x_diff & x_left_is_nearer
+            x_use_right = x_diff & (~x_left_is_nearer)
+            y_use_top = y_diff & y_top_is_nearer
+            y_use_bottom = y_diff & (~y_top_is_nearer)
+        else:
+            x_use_left = x_diff & (~x_left_is_nearer)
+            x_use_right = x_diff & x_left_is_nearer
+            y_use_top = y_diff & (~y_top_is_nearer)
+            y_use_bottom = y_diff & y_top_is_nearer
+
+        edge_width = abs(edge_side)
+        for offset in range(edge_width):
+            if offset < width - 1:
+                edge[:, :, :width - 1 - offset] |= x_use_left[:, :, offset:]
+                edge[:, :, 1 + offset:] |= x_use_right[:, :, :width - 1 - offset]
+            if offset < height - 1:
+                edge[:, :height - 1 - offset, :] |= y_use_top[:, offset:, :]
+                edge[:, 1 + offset:, :] |= y_use_bottom[:, :height - 1 - offset, :]
+        return edge.view(self.num_envs, -1)
 
     def _update_proprioception_history(self, proprioception):
         self.proprioception_history_buf = torch.roll(self.proprioception_history_buf, shifts=-1, dims=1)
@@ -1834,6 +1878,7 @@ class LeggedRobot(BaseTask):
         depth = torch.nan_to_num(depth, nan=max_depth, posinf=max_depth, neginf=max_depth)
         depth = torch.clamp(depth, min=min_depth, max=max_depth)
         self.depth_image_buf[:] = depth.reshape(self.num_envs, -1)
+        depth_edge_mask = self._get_depth_edge_mask(self.depth_image_buf)
         noisy_depth = torch.clamp(
             self._add_uniform_noise(
                 self.depth_image_buf,
@@ -1842,7 +1887,7 @@ class LeggedRobot(BaseTask):
             min=min_depth,
             max=max_depth,
         )
-        self.depth_image_noisy_buf[:] = self._add_depth_speckle_noise(noisy_depth)
+        self.depth_image_noisy_buf[:] = self._add_depth_speckle_noise(noisy_depth, depth_edge_mask)
 
     def _reward_position_tracking(self):
         goal_reached, goal_dist = self._get_goal_delta()
