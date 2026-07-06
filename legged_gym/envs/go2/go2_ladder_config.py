@@ -82,7 +82,13 @@ class GO2LadderCfg( LeggedRobotCfg ):
         stiffness_multiplier_range = [0.8, 1.2]
         damping_multiplier_range = [0.8, 1.2]
 
-        push_robots = False
+        push_robots = True
+        push_interval_s = 2.
+        max_push_vel_xy = 0.5
+
+        push_robot_foot = True
+        push_foot_interval_s = 1.
+        max_push_foot_vel_xy = 5.
 
         apply_base_force_torque = True
         base_force_interval_s = 4.

@@ -196,8 +196,11 @@ class LeggedRobotCfg(BaseConfig):
         stiffness_multiplier_range = [1.0, 1.0]
         damping_multiplier_range = [1.0, 1.0]
         push_robots = False
-        push_interval_s = 15
+        push_interval_s = 2
         max_push_vel_xy = 1.
+        push_robot_foot = False
+        push_foot_interval_s = 15.
+        max_push_foot_vel_xy = 1.
         apply_base_force_torque = True
         base_force_interval_s = 15.
         base_force_duration_s = 0.2

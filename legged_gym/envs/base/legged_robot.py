@@ -91,7 +91,7 @@ class LeggedRobot(BaseTask):
             delayed_actions = self._get_delayed_actions(self.actions)
             self.torques = self._compute_torques(delayed_actions).view(self.torques.shape)
             self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
-            self._apply_base_force_torque_disturbance()
+            self._apply_rigid_body_force_disturbances()
             self.gym.simulate(self.sim)
             if self.device == 'cpu':
                 self.gym.fetch_results(self.sim, True)
@@ -548,6 +548,10 @@ class LeggedRobot(BaseTask):
             self.measured_heights = self._get_heights()
         if self.cfg.domain_rand.push_robots and  (self.common_step_counter % self.cfg.domain_rand.push_interval == 0):
             self._push_robots()
+        if (self.cfg.domain_rand.push_robot_foot
+                and self.cfg.domain_rand.push_foot_interval > 0
+                and self.common_step_counter % self.cfg.domain_rand.push_foot_interval == 0):
+            self._push_robot_feet()
 
     def _resample_commands(self, env_ids):
         """ Randommly select commands of some environments
@@ -734,6 +738,27 @@ class LeggedRobot(BaseTask):
         self.root_states[:, 7:9] = torch_rand_float(-max_vel, max_vel, (self.num_envs, 2), device=self.device) # lin vel x/y
         self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states))
 
+    def _push_robot_feet(self):
+        """Randomly push one foot per robot with a one-step velocity-equivalent impulse."""
+        if len(self.feet_indices) == 0:
+            return
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
+        max_vel = self.cfg.domain_rand.max_push_foot_vel_xy
+        foot_ids = torch.randint(len(self.feet_indices), (self.num_envs,), device=self.device)
+        self.foot_push_body_indices[:] = self.feet_indices[foot_ids]
+        env_ids = torch.arange(self.num_envs, device=self.device)
+        target_vel_xy = torch_rand_float(
+            -max_vel,
+            max_vel,
+            (self.num_envs, 2),
+            device=self.device,
+        )
+        current_vel_xy = self.rigid_body_states[env_ids, self.foot_push_body_indices, 7:9]
+        body_mass = self.rigid_body_masses[self.foot_push_body_indices].unsqueeze(1)
+        self.foot_push_force.zero_()
+        self.foot_push_force[:, :2] = body_mass * (target_vel_xy - current_vel_xy) / self.sim_params.dt
+        self.foot_push_steps_remaining = 1
+
     def _sample_symmetric_body_vector(self, max_values):
         max_tensor = torch.as_tensor(max_values, dtype=torch.float, device=self.device)
         if max_tensor.numel() == 1:
@@ -759,7 +784,20 @@ class LeggedRobot(BaseTask):
         self.p_gains[env_ids] = base_p * self.p_gain_multipliers[env_ids]
         self.d_gains[env_ids] = base_d * self.d_gain_multipliers[env_ids]
 
-    def _apply_base_force_torque_disturbance(self):
+    def _apply_rigid_body_force_disturbances(self):
+        self.base_force_tensors.zero_()
+        self.base_torque_tensors.zero_()
+        self._accumulate_base_force_torque_disturbance()
+        self._accumulate_foot_push_disturbance()
+        self.gym.apply_rigid_body_force_tensors(
+            self.sim,
+            gymtorch.unwrap_tensor(self.base_force_tensors),
+            gymtorch.unwrap_tensor(self.base_torque_tensors),
+            gymapi.ENV_SPACE,
+        )
+        self.sim_step_counter += 1
+
+    def _accumulate_base_force_torque_disturbance(self):
         cfg = self.cfg.domain_rand
         if not cfg.apply_base_force_torque:
             return
@@ -775,33 +813,22 @@ class LeggedRobot(BaseTask):
             else:
                 self.base_force_local.zero_()
                 self.base_torque_local.zero_()
-                self.base_force_tensors.zero_()
-                self.base_torque_tensors.zero_()
-                self.gym.apply_rigid_body_force_tensors(
-                    self.sim,
-                    gymtorch.unwrap_tensor(self.base_force_tensors),
-                    gymtorch.unwrap_tensor(self.base_torque_tensors),
-                    gymapi.ENV_SPACE,
-                )
-                self.sim_step_counter += 1
                 return
 
         world_force = quat_apply(self.base_quat, self.base_force_local)
         world_torque = quat_apply(self.base_quat, self.base_torque_local)
 
-        self.base_force_tensors.zero_()
-        self.base_torque_tensors.zero_()
         self.base_force_tensors[:, self.base_body_index, :] = world_force
         self.base_torque_tensors[:, self.base_body_index, :] = world_torque
-        self.gym.apply_rigid_body_force_tensors(
-            self.sim,
-            gymtorch.unwrap_tensor(self.base_force_tensors),
-            gymtorch.unwrap_tensor(self.base_torque_tensors),
-            gymapi.ENV_SPACE,
-        )
 
         self.base_force_torque_steps_remaining -= 1
-        self.sim_step_counter += 1
+
+    def _accumulate_foot_push_disturbance(self):
+        if self.foot_push_steps_remaining <= 0:
+            return
+        env_ids = torch.arange(self.num_envs, device=self.device)
+        self.base_force_tensors[env_ids, self.foot_push_body_indices, :] += self.foot_push_force
+        self.foot_push_steps_remaining -= 1
 
     def _update_terrain_curriculum(self, env_ids):
         """ Implements the game-inspired curriculum.
@@ -1039,6 +1066,9 @@ class LeggedRobot(BaseTask):
         self.base_force_local = torch.zeros(self.num_envs, 3, dtype=torch.float, device=self.device, requires_grad=False)
         self.base_torque_local = torch.zeros_like(self.base_force_local)
         self.base_force_torque_steps_remaining = 0
+        self.foot_push_force = torch.zeros(self.num_envs, 3, dtype=torch.float, device=self.device, requires_grad=False)
+        self.foot_push_body_indices = torch.zeros(self.num_envs, dtype=torch.long, device=self.device, requires_grad=False)
+        self.foot_push_steps_remaining = 0
         num_symmetry_pairs = int(self.symmetry_joint_pair_indices.shape[0]) if hasattr(self, "symmetry_joint_pair_indices") else 0
         self.filtered_symmetry_torque_abs_diff = torch.zeros(
             self.num_envs, num_symmetry_pairs, dtype=torch.float, device=self.device, requires_grad=False
@@ -1322,6 +1352,13 @@ class LeggedRobot(BaseTask):
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
             self.feet_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], feet_names[i])
+        body_props = self.gym.get_actor_rigid_body_properties(self.envs[0], self.actor_handles[0])
+        self.rigid_body_masses = torch.tensor(
+            [body_prop.mass for body_prop in body_props],
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
         self.foot_name_to_obs_index = {name: i for i, name in enumerate(feet_names)}
 
         self.penalised_contact_indices = torch.zeros(len(penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
@@ -1556,6 +1593,7 @@ class LeggedRobot(BaseTask):
         self.max_episode_length = np.ceil(self.max_episode_length_s / self.dt)
 
         self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)
+        self.cfg.domain_rand.push_foot_interval = np.ceil(self.cfg.domain_rand.push_foot_interval_s / self.dt)
         self.base_force_interval_steps = int(np.ceil(self.cfg.domain_rand.base_force_interval_s / self.sim_params.dt))
         self.base_force_duration_steps = int(np.ceil(self.cfg.domain_rand.base_force_duration_s / self.sim_params.dt))
         self.depth_camera_update_interval_steps = max(
