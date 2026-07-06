@@ -344,6 +344,12 @@ class LeggedRobot(BaseTask):
             is_ladder = self.terrain_ladder_mask[self.terrain_levels, self.terrain_types]
             if torch.count_nonzero(is_ladder).item() > 0:
                 command_obs = command_obs.clone()
+                ladder_goal_x_sign = torch.where(
+                    self.commands[is_ladder, 0] < 0.,
+                    -torch.ones_like(self.commands[is_ladder, 0]),
+                    torch.ones_like(self.commands[is_ladder, 0]),
+                )
+                command_obs[is_ladder, 0] = (1. - self.reached_goal[is_ladder, 0]) * ladder_goal_x_sign
                 command_obs[is_ladder, 1] = 0.
         obs_parts = [
             # goal
