@@ -339,9 +339,15 @@ class LeggedRobot(BaseTask):
         height_scan = torch.clip(
                 self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1) * self.obs_scales.height_measurements
         ladder_obs = self._get_ladder_observations()
+        command_obs = self.commands * self.commands_scale
+        if hasattr(self, "terrain_ladder_mask") and command_obs.shape[1] > 1:
+            is_ladder = self.terrain_ladder_mask[self.terrain_levels, self.terrain_types]
+            if torch.count_nonzero(is_ladder).item() > 0:
+                command_obs = command_obs.clone()
+                command_obs[is_ladder, 1] = 0.
         obs_parts = [
             # goal
-            self.commands * self.commands_scale,
+            command_obs,
             self.reached_goal,
             # current prioproception
             curr_proprio_clean,
