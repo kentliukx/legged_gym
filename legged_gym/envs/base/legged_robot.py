@@ -350,7 +350,8 @@ class LeggedRobot(BaseTask):
                     torch.ones_like(self.commands[is_ladder, 0]),
                 )
                 command_obs[is_ladder, 0] = (1. - self.reached_goal[is_ladder, 0]) * ladder_goal_x_sign
-                command_obs[is_ladder, 1] = 0.
+                flat_mask = self._get_flat_terrain_mask() > 0.5
+                command_obs[is_ladder & (~flat_mask), 1] = 0.
         obs_parts = [
             # goal
             command_obs,
