@@ -649,6 +649,7 @@ class LeggedRobot(BaseTask):
 
         self._update_platform_commands(env_ids)
         self.min_goal_dist[env_ids] = self.goal_dist[env_ids]
+        self.last_goal_dist[env_ids] = self.goal_dist[env_ids]
 
     def _get_ladder_progress(self, env_ids=None):
         if not hasattr(self, "goal_targets"):
@@ -1079,6 +1080,7 @@ class LeggedRobot(BaseTask):
         self.commands = torch.zeros(self.num_envs, self.cfg.commands.num_commands, dtype=torch.float, device=self.device, requires_grad=False)
         self.commands_scale = torch.ones(self.cfg.commands.num_commands, device=self.device, requires_grad=False)
         self.goal_dist = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.last_goal_dist = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         self.min_goal_dist = torch.full((self.num_envs,), float("inf"), dtype=torch.float, device=self.device, requires_grad=False)
         self.reached_goal = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
         self.review_episode_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
@@ -1915,14 +1917,16 @@ class LeggedRobot(BaseTask):
         )
         speed_over = torch.clamp(velocity_norm - speed_limit, min=0.)
         min_dist_decrease_speed = torch.clamp(self.min_goal_dist - goal_dist, min=0.) / self.dt
+        dist_increase_speed = torch.clamp(goal_dist - self.last_goal_dist, min=0.) / self.dt
         self.min_goal_dist[:] = torch.minimum(self.min_goal_dist, goal_dist)
+        self.last_goal_dist[:] = goal_dist
         heading_error = torch.atan2(goal_dir[:, 1], goal_dir[:, 0])
         heading_gate = torch.clamp(torch.cos(3. * heading_error), min=0.)
         progress_reward_multiplier = 1. + self.difficulty * (
             float(self.cfg.rewards.progress_reward_max_difficulty_multiplier) - 1.
         )
         progress_reward = min_dist_decrease_speed * heading_gate * progress_reward_multiplier
-        return (1. - goal_reached) * (progress_reward - 5. * speed_over) + 1.5 * goal_reached
+        return (1. - goal_reached) * (progress_reward - 1. * dist_increase_speed - 5. * speed_over) + 1.5 * goal_reached
 
     def _reward_heading_tracking(self):
         _, goal_dist = self._get_goal_delta()
