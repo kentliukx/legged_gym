@@ -50,7 +50,7 @@ class LeggedRobotCfg(BaseConfig):
         depth_update_interval_s = 0.1
         depth_min = 0.1
         depth_max = 2.0
-        depth_position = [0.33, 0.0, 0.08]
+        depth_position = [0.35, 0.0, 0.08]
         # Relative to the base frame: yaw is around +z, positive pitch looks downward.
         depth_pitch_deg = 15.0
         depth_yaw_deg = 0.0
