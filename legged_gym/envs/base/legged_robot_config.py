@@ -291,7 +291,7 @@ class LeggedRobotCfg(BaseConfig):
             depth_image = 0.03  # [m], per-pixel uniform depth noise
             depth_dropout_prob = 0.005
             depth_outlier_prob = 0.002
-            depth_edge_dropout_prob = 0.5
+            depth_edge_dropout_prob = 0.05
             depth_edge_threshold = 0.1  # [m], neighboring depth jump treated as an invalid-pixel edge
             # Negative: N pixels inside the nearer/bar side, 0: disabled, positive: N pixels outside the farther side.
             depth_edge_dilation = -1
