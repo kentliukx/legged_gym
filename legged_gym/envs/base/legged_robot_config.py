@@ -56,14 +56,14 @@ class LeggedRobotCfg(BaseConfig):
         depth_yaw_deg = 0.0
         # Per-environment installation error, sampled once when environments are created.
         depth_position_noise_range = [
-            [-0.03, 0.03],
-            [-0.03, 0.03],
-            [-0.03, 0.03],
+            [-0.01, 0.01],
+            [-0.01, 0.01],
+            [-0.01, 0.01],
         ]
         # Roll, pitch, yaw noise ranges in degrees.
         depth_rotation_noise_deg_range = [
             [-2, 2],
-            [-5, 5],
+            [-2, 2],
             [-2, 2],
         ]
 
@@ -285,10 +285,10 @@ class LeggedRobotCfg(BaseConfig):
         noise_level = 1.0 # scales other values
         class noise_scales:
             dof_pos = 0.01
-            dof_vel = 1.5
-            ang_vel = 0.2
+            dof_vel = 0.2
+            ang_vel = 0.05
             gravity = 0.05
-            depth_image = 0.03  # [m], per-pixel uniform depth noise
+            depth_image = 0.01  # [m], per-pixel uniform depth noise
             depth_dropout_prob = 0.005
             depth_outlier_prob = 0.002
             depth_edge_dropout_prob = 0.05
