@@ -285,8 +285,8 @@ class LeggedRobotCfg(BaseConfig):
         noise_level = 1.0 # scales other values
         class noise_scales:
             dof_pos = 0.01
-            dof_vel = 0.2
-            ang_vel = 0.05
+            dof_vel = 1.5
+            ang_vel = 0.2
             gravity = 0.05
             depth_image = 0.01  # [m], per-pixel uniform depth noise
             depth_dropout_prob = 0.005
