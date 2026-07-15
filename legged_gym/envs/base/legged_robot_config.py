@@ -231,11 +231,11 @@ class LeggedRobotCfg(BaseConfig):
             stand_still_contact_when_reached_goal = -0.5
 
             # Slow movement rewards
-            action_rate = -0.05
-            action_smoothness = -0.05
-            torques = -5e-4
-            dof_vel = -1e-3
-            dof_acc = -5e-7
+            action_rate = -0.02
+            action_smoothness = -0.02
+            torques = -2e-4
+            dof_vel = -5e-4
+            dof_acc = -2e-7
             dof_pos_limits = -5
 
             # Unused rewards
