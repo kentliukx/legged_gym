@@ -212,7 +212,7 @@ class LeggedRobotCfg(BaseConfig):
     class rewards:
         class scales:
             # Primary task rewards
-            alive = 1
+            alive = 3
             position_tracking = 3
 
             # Slow movement rewards
