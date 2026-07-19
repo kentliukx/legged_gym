@@ -305,6 +305,31 @@
     <child link="FL_calflower" />
     <axis xyz="0 0 0" />
   </joint>
+  <link name="FL_foot">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.04" />
+      <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../dae/foot.dae" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.002 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.022" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="FL_foot_joint" type="fixed">
+    <origin xyz="0 0 -0.213" rpy="0 0 0" />
+    <parent link="FL_calf" />
+    <child link="FL_foot" />
+    <axis xyz="0 0 0" />
+  </joint>
   <link name="FL_effector">
     <inertial>
       <origin xyz="0.004507 0 0.003743" rpy="0 0 0" />
@@ -557,6 +582,31 @@
     <origin xyz="0.018 0 -0.14" rpy="0 0.05 0" />
     <parent link="FR_calf" />
     <child link="FR_calflower" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="FR_foot">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.04" />
+      <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../dae/foot.dae" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.002 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.022" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="FR_foot_joint" type="fixed">
+    <origin xyz="0 0 -0.213" rpy="0 0 0" />
+    <parent link="FR_calf" />
+    <child link="FR_foot" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="FR_effector">
@@ -813,6 +863,31 @@
     <child link="RL_calflower" />
     <axis xyz="0 0 0" />
   </joint>
+  <link name="RL_foot">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.04" />
+      <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../dae/foot.dae" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.002 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.022" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="RL_foot_joint" type="fixed">
+    <origin xyz="0 0 -0.213" rpy="0 0 0" />
+    <parent link="RL_calf" />
+    <child link="RL_foot" />
+    <axis xyz="0 0 0" />
+  </joint>
   <link name="RL_effector">
     <inertial>
       <origin xyz="0.005049 0 0.015817" rpy="0 0 0" />
@@ -1065,6 +1140,31 @@
     <origin xyz="0.018 0 -0.14" rpy="0 0.05 0" />
     <parent link="RR_calf" />
     <child link="RR_calflower" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="RR_foot">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.04" />
+      <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../dae/foot.dae" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.002 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.022" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="RR_foot_joint" type="fixed">
+    <origin xyz="0 0 -0.213" rpy="0 0 0" />
+    <parent link="RR_calf" />
+    <child link="RR_foot" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="RR_effector">
