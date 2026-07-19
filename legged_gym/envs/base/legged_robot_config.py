@@ -48,6 +48,8 @@ class LeggedRobotCfg(BaseConfig):
         depth_height = 36
         depth_horizontal_fov = 73
         depth_update_interval_s = 0.1
+        # Frames are delivered to the policy after this fixed camera latency.
+        depth_latency_s = 0.04
         depth_min = 0.1
         depth_max = 2.0
         depth_position = [0.35, 0.0, 0.08]

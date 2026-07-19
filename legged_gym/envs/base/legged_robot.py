@@ -1047,6 +1047,23 @@ class LeggedRobot(BaseTask):
             requires_grad=False,
         )
         self.depth_image_noisy_buf = torch.zeros_like(self.depth_image_buf)
+        self.depth_image_latency_buf = torch.zeros(
+            self.depth_camera_latency_steps + 1,
+            self.num_envs,
+            self.depth_image_buf.shape[1],
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.depth_image_latency_valid = torch.zeros(
+            self.depth_camera_latency_steps + 1,
+            dtype=torch.bool,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.depth_image_latency_initialized = False
+        self.depth_image_delivered_this_step = False
+        self.last_depth_camera_update_step = -self.depth_camera_update_interval_steps
         self.depth_camera = None
         self.depth_camera_position = None
         self.depth_camera_rotation = None
@@ -1659,6 +1676,13 @@ class LeggedRobot(BaseTask):
             1,
             int(np.ceil(float(self.cfg.sensor.depth_update_interval_s) / self.dt)),
         )
+        self.depth_camera_latency_steps = max(
+            0,
+            int(np.ceil(
+                float(getattr(self.cfg.sensor, "depth_latency_s", 0.0))
+                / self.dt
+            )),
+        )
 
     def _draw_debug_vis(self):
         """ Draws visualizations for dubugging (slows down simulation a lot).
@@ -1868,11 +1892,18 @@ class LeggedRobot(BaseTask):
         return self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.phase_contact_force_threshold
 
     def _update_depth_camera_observations(self):
+        self.depth_image_delivered_this_step = False
         if not self.cfg.sensor.enable_depth_camera:
             return
-        if (self.common_step_counter > 1
-                and self.common_step_counter % self.depth_camera_update_interval_steps != 0):
+        delivery_slot = self.common_step_counter % self.depth_image_latency_buf.shape[0]
+        if self.depth_image_latency_valid[delivery_slot]:
+            self.depth_image_noisy_buf[:] = self.depth_image_latency_buf[delivery_slot]
+            self.depth_image_latency_valid[delivery_slot] = False
+            self.depth_image_delivered_this_step = True
+        if (self.common_step_counter - self.last_depth_camera_update_step
+                < self.depth_camera_update_interval_steps):
             return
+        self.last_depth_camera_update_step = self.common_step_counter
 
         min_depth = float(self.cfg.sensor.depth_min)
         max_depth = float(self.cfg.sensor.depth_max)
@@ -1902,7 +1933,21 @@ class LeggedRobot(BaseTask):
             min=min_depth,
             max=max_depth,
         )
-        self.depth_image_noisy_buf[:] = self._add_depth_speckle_noise(noisy_depth, depth_edge_mask)
+        noisy_depth = self._add_depth_speckle_noise(noisy_depth, depth_edge_mask)
+        if not self.depth_image_latency_initialized:
+            # Warm up the first frame immediately so the policy never receives zeros.
+            self.depth_image_noisy_buf[:] = noisy_depth
+            self.depth_image_latency_initialized = True
+            self.depth_image_delivered_this_step = True
+        elif self.depth_camera_latency_steps == 0:
+            self.depth_image_noisy_buf[:] = noisy_depth
+            self.depth_image_delivered_this_step = True
+        else:
+            delivery_slot = (
+                self.common_step_counter + self.depth_camera_latency_steps
+            ) % self.depth_image_latency_buf.shape[0]
+            self.depth_image_latency_buf[delivery_slot] = noisy_depth
+            self.depth_image_latency_valid[delivery_slot] = True
 
     def _reward_position_tracking(self):
         goal_reached, goal_dist = self._get_goal_delta()

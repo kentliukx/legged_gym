@@ -342,10 +342,7 @@ def play(args):
             obs, _, rews, dones, infos = env.step(actions.detach())
             with torch.inference_mode():
                 ppo_runner.alg.actor_critic.reset(dones)
-            depth_camera_updated = (
-                env.common_step_counter <= 1
-                or env.common_step_counter % env.depth_camera_update_interval_steps == 0
-            )
+            depth_camera_updated = env.depth_image_delivered_this_step
             if (VISUALIZE_RECONSTRUCTED_HEIGHTMAP
                     and diagnostics is not None
                     and env.viewer is not None):
