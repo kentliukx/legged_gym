@@ -23,6 +23,7 @@ def render_depth_kernel(
     inverse_intrinsics: wp.mat44,
     far_plane: float,
     pixels: wp.array(dtype=wp.float32, ndim=3),
+    hit_faces: wp.array(dtype=wp.int32, ndim=3),
     center_x: int,
     center_y: int,
 ):
@@ -44,12 +45,12 @@ def render_depth_kernel(
     depth_projection = wp.dot(ray_direction, principal_direction)
 
     distance = NO_HIT_DEPTH
+    hit_face = int(-1)
     hit_distance = float(0.0)
     hit_u = float(0.0)
     hit_v = float(0.0)
     hit_sign = float(0.0)
     hit_normal = wp.vec3()
-    hit_face = int(0)
     if wp.mesh_query_ray(
         mesh_ids[0],
         camera_position,
@@ -65,6 +66,7 @@ def render_depth_kernel(
         distance = depth_projection * hit_distance
 
     pixels[env_id, pixel_y, pixel_x] = distance
+    hit_faces[env_id, pixel_y, pixel_x] = hit_face
 
 
 class WarpDepthCamera:
@@ -81,6 +83,7 @@ class WarpDepthCamera:
         horizontal_fov_deg,
         far_plane,
         device,
+        ladder_triangle_mask=None,
     ):
         if not str(device).startswith("cuda"):
             raise ValueError("Warp depth camera requires a CUDA simulation device")
@@ -110,10 +113,22 @@ class WarpDepthCamera:
         self.depth = torch.zeros(
             self.num_envs, self.height, self.width, dtype=torch.float32, device=self.device
         )
+        self.hit_faces = torch.empty(
+            self.num_envs, self.height, self.width, dtype=torch.int32, device=self.device
+        )
+        if ladder_triangle_mask is None:
+            ladder_triangle_mask = np.zeros(len(triangles), dtype=np.bool_)
+        ladder_triangle_mask = np.asarray(ladder_triangle_mask, dtype=np.bool_)
+        if ladder_triangle_mask.shape != (len(triangles),):
+            raise ValueError("ladder_triangle_mask must have one entry per terrain triangle")
+        self.ladder_triangle_mask = torch.as_tensor(
+            ladder_triangle_mask, dtype=torch.bool, device=self.device
+        )
 
         self.wp_camera_positions = wp.from_torch(self.camera_positions, dtype=wp.vec3)
         self.wp_camera_orientations = wp.from_torch(self.camera_orientations, dtype=wp.quat)
         self.wp_depth = wp.from_torch(self.depth, dtype=wp.float32)
+        self.wp_hit_faces = wp.from_torch(self.hit_faces, dtype=wp.int32)
 
         center_x = self.width / 2.0
         center_y = self.height / 2.0
@@ -143,6 +158,7 @@ class WarpDepthCamera:
                 self.inverse_intrinsics,
                 self.far_plane,
                 self.wp_depth,
+                self.wp_hit_faces,
                 self.center_x,
                 self.center_y,
             ],
@@ -157,4 +173,7 @@ class WarpDepthCamera:
             self._launch()
             self.graph = wp.capture_end(device=self.device)
         wp.capture_launch(self.graph)
-        return self.depth
+        valid_faces = self.hit_faces >= 0
+        safe_faces = torch.clamp(self.hit_faces, min=0).long()
+        ladder_hits = valid_faces & self.ladder_triangle_mask[safe_faces]
+        return self.depth, ladder_hits

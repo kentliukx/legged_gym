@@ -425,19 +425,31 @@ class LeggedRobot(BaseTask):
 
         dropout_prob = float(getattr(self.cfg.noise.noise_scales, "depth_dropout_prob", 0.0))
         outlier_prob = float(getattr(self.cfg.noise.noise_scales, "depth_outlier_prob", 0.0))
-        edge_dropout_prob = float(getattr(self.cfg.noise.noise_scales, "depth_edge_dropout_prob", 0.0))
+        edge_dropout_range = getattr(self.cfg.noise.noise_scales, "depth_edge_dropout_prob", 0.0)
+        if isinstance(edge_dropout_range, (tuple, list)):
+            if len(edge_dropout_range) != 2:
+                raise ValueError("depth_edge_dropout_prob must be a scalar or a [min, max] range")
+            edge_dropout_min, edge_dropout_max = map(float, edge_dropout_range)
+        else:
+            edge_dropout_min = edge_dropout_max = float(edge_dropout_range)
         if (not 0.0 <= dropout_prob <= 1.0
                 or not 0.0 <= outlier_prob <= 1.0
-                or not 0.0 <= edge_dropout_prob <= 1.0):
+                or not 0.0 <= edge_dropout_min <= edge_dropout_max <= 1.0):
             raise ValueError("Depth dropout, edge dropout, and outlier probabilities must be within [0, 1]")
         if dropout_prob + outlier_prob > 1.0:
             raise ValueError("Depth dropout and outlier probabilities must sum to at most 1")
 
         sample = torch.rand_like(depth)
         dropout_mask = sample < dropout_prob
-        if edge_dropout_prob > 0.0:
+        if edge_dropout_max > 0.0:
             if edge_mask is None:
                 edge_mask = self._get_depth_edge_mask(depth)
+            edge_dropout_prob = edge_dropout_min + torch.rand(
+                self.num_envs,
+                1,
+                device=depth.device,
+                dtype=depth.dtype,
+            ) * (edge_dropout_max - edge_dropout_min)
             dropout_mask |= edge_mask & (torch.rand_like(depth) < edge_dropout_prob)
         outlier_mask = (sample >= dropout_prob) & (sample < dropout_prob + outlier_prob)
         min_depth = float(self.cfg.sensor.depth_min)
@@ -456,35 +468,65 @@ class LeggedRobot(BaseTask):
         depth_image = depth.view(self.num_envs, height, width)
         edge_threshold = float(getattr(self.cfg.noise.noise_scales, "depth_edge_threshold", 0.08))
 
-        edge_side = int(getattr(self.cfg.noise.noise_scales, "depth_edge_dilation", 0))
         edge = torch.zeros_like(depth_image, dtype=torch.bool)
-        if edge_side == 0:
+        near_dilation = int(getattr(self.cfg.noise.noise_scales, "depth_edge_dilation_near", 0))
+        far_dilation = int(getattr(self.cfg.noise.noise_scales, "depth_edge_dilation_far", 0))
+        if near_dilation == 0 and far_dilation == 0:
             return edge.view(self.num_envs, -1)
+        if not near_dilation <= far_dilation <= 0:
+            raise ValueError("Depth edge dilation must satisfy near <= far <= 0 for inward masking")
+        dilation_distance_range = getattr(
+            self.cfg.noise.noise_scales,
+            "depth_edge_dilation_distance_range",
+            [self.cfg.sensor.depth_min, self.cfg.sensor.depth_max],
+        )
+        if len(dilation_distance_range) != 2:
+            raise ValueError("depth_edge_dilation_distance_range must contain [near, far] depths")
+        near_distance, far_distance = map(float, dilation_distance_range)
+        if not near_distance < far_distance:
+            raise ValueError("Depth edge dilation distance range must satisfy near < far")
+        dilation_exponent = float(getattr(
+            self.cfg.noise.noise_scales,
+            "depth_edge_dilation_distance_exponent",
+            1.0,
+        ))
+        if dilation_exponent <= 0.0:
+            raise ValueError("Depth edge dilation distance exponent must be positive")
 
-        x_diff = torch.abs(depth_image[:, :, 1:] - depth_image[:, :, :-1]) > edge_threshold
-        y_diff = torch.abs(depth_image[:, 1:, :] - depth_image[:, :-1, :]) > edge_threshold
+        def dilation_width(edge_depth):
+            distance_ratio = torch.clamp(
+                (edge_depth - near_distance) / (far_distance - near_distance),
+                0.0,
+                1.0,
+            )
+            near_strength = torch.pow(1.0 - distance_ratio, dilation_exponent)
+            dilation = torch.round(
+                far_dilation + (near_dilation - far_dilation) * near_strength
+            ).long()
+            return -dilation
+
+        ladder_hits = self.depth_camera_ladder_hits.view(self.num_envs, height, width)
+        x_ladder_boundary = ladder_hits[:, :, 1:] != ladder_hits[:, :, :-1]
+        y_ladder_boundary = ladder_hits[:, 1:, :] != ladder_hits[:, :-1, :]
+        x_diff = (torch.abs(depth_image[:, :, 1:] - depth_image[:, :, :-1]) > edge_threshold) & x_ladder_boundary
+        y_diff = (torch.abs(depth_image[:, 1:, :] - depth_image[:, :-1, :]) > edge_threshold) & y_ladder_boundary
 
         x_left_is_nearer = depth_image[:, :, :-1] < depth_image[:, :, 1:]
         y_top_is_nearer = depth_image[:, :-1, :] < depth_image[:, 1:, :]
-        if edge_side < 0:
-            x_use_left = x_diff & x_left_is_nearer
-            x_use_right = x_diff & (~x_left_is_nearer)
-            y_use_top = y_diff & y_top_is_nearer
-            y_use_bottom = y_diff & (~y_top_is_nearer)
-        else:
-            x_use_left = x_diff & (~x_left_is_nearer)
-            x_use_right = x_diff & x_left_is_nearer
-            y_use_top = y_diff & (~y_top_is_nearer)
-            y_use_bottom = y_diff & y_top_is_nearer
+        x_use_left = x_diff & x_left_is_nearer
+        x_use_right = x_diff & (~x_left_is_nearer)
+        y_use_top = y_diff & y_top_is_nearer
+        y_use_bottom = y_diff & (~y_top_is_nearer)
+        x_width = dilation_width(torch.minimum(depth_image[:, :, :-1], depth_image[:, :, 1:]))
+        y_width = dilation_width(torch.minimum(depth_image[:, :-1, :], depth_image[:, 1:, :]))
 
-        edge_width = abs(edge_side)
-        for offset in range(edge_width):
+        for offset in range(-near_dilation):
             if offset < width - 1:
-                edge[:, :, :width - 1 - offset] |= x_use_left[:, :, offset:]
-                edge[:, :, 1 + offset:] |= x_use_right[:, :, :width - 1 - offset]
+                edge[:, :, :width - 1 - offset] |= (x_use_left & (x_width > offset))[:, :, offset:]
+                edge[:, :, 1 + offset:] |= (x_use_right & (x_width > offset))[:, :, :width - 1 - offset]
             if offset < height - 1:
-                edge[:, :height - 1 - offset, :] |= y_use_top[:, offset:, :]
-                edge[:, 1 + offset:, :] |= y_use_bottom[:, :height - 1 - offset, :]
+                edge[:, :height - 1 - offset, :] |= (y_use_top & (y_width > offset))[:, offset:, :]
+                edge[:, 1 + offset:, :] |= (y_use_bottom & (y_width > offset))[:, :height - 1 - offset, :]
         return edge.view(self.num_envs, -1)
 
     def _update_proprioception_history(self, proprioception):
@@ -1466,6 +1508,7 @@ class LeggedRobot(BaseTask):
             horizontal_fov_deg=self.cfg.sensor.depth_horizontal_fov,
             far_plane=self.cfg.sensor.depth_max,
             device=self.device,
+            ladder_triangle_mask=self.terrain.ladder_triangle_mask,
         )
         self.depth_camera_nominal_position = torch.tensor(
             self.cfg.sensor.depth_position,
@@ -1920,10 +1963,11 @@ class LeggedRobot(BaseTask):
                 self.depth_camera_axis_rotation,
             ),
         )
-        depth = self.depth_camera.render(camera_positions, camera_orientations)
+        depth, ladder_hits = self.depth_camera.render(camera_positions, camera_orientations)
         depth = torch.nan_to_num(depth, nan=max_depth, posinf=max_depth, neginf=max_depth)
         depth = torch.clamp(depth, min=min_depth, max=max_depth)
         self.depth_image_buf[:] = depth.reshape(self.num_envs, -1)
+        self.depth_camera_ladder_hits = ladder_hits.reshape(self.num_envs, -1)
         depth_edge_mask = self._get_depth_edge_mask(self.depth_image_buf)
         noisy_depth = torch.clamp(
             self._add_uniform_noise(

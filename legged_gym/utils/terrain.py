@@ -133,6 +133,7 @@ class Terrain:
         max_bar_y_scale = _range_max(bar_y_scale)
         all_vertices = []
         all_triangles = []
+        all_ladder_triangle_masks = []
         vertex_offset = 0
         self.rough_probability = float(np.clip(rough_probability, 0.0, 1.0))
         shared_bar_spacing_by_col = [_sample_range(bar_spacing) for _ in range(self.num_cols)]
@@ -158,6 +159,7 @@ class Terrain:
                 ladder_origin = np.asarray([self.env_length * 0.5, self.env_width * 0.5, 0.0], dtype=np.float32)
                 local_vertices = np.zeros((0, 3), dtype=np.float32)
                 local_triangles = np.zeros((0, 3), dtype=np.uint32)
+                ladder_triangle_count = 0
             else:
                 row_difficulty = ((i - 1) / (self.cfg.num_rows - 2)
                                   if self.cfg.curriculum and self.cfg.num_rows > 2
@@ -165,7 +167,7 @@ class Terrain:
                 tile_ladder_angle = _lerp_range(ladder_angle, row_difficulty)
                 self.ladder_bar_spacing[i, j] = tile_bar_spacing
                 self.ladder_angles[i, j] = tile_ladder_angle
-                bar_centers, prepared_bar_vertices, side_bar_segments, side_bar_radius_xy, tile_bar_y_scale, local_vertices, local_triangles, platform_center = generate_ladder_bar_mesh(
+                bar_centers, prepared_bar_vertices, side_bar_segments, side_bar_radius_xy, tile_bar_y_scale, local_vertices, local_triangles, ladder_triangle_count, platform_center = generate_ladder_bar_mesh(
                     env_length=self.env_length,
                     env_width=self.env_width,
                     difficulty=row_difficulty,
@@ -236,7 +238,16 @@ class Terrain:
             if local_vertices.shape[0] == 0:
                 local_vertices = ground_vertices
                 local_triangles = ground_triangles
+                local_ladder_triangle_mask = np.zeros(len(local_triangles), dtype=np.bool_)
             else:
+                # Rungs and side rails are first in the ladder mesh. The ground,
+                # platform, and optional scene obstacles deliberately remain untagged.
+                local_ladder_triangle_mask = np.zeros(
+                    len(ground_triangles) + len(local_triangles), dtype=np.bool_
+                )
+                local_ladder_triangle_mask[
+                    len(ground_triangles):len(ground_triangles) + ladder_triangle_count
+                ] = True
                 local_triangles = np.concatenate(
                     (ground_triangles, local_triangles + ground_vertices.shape[0]),
                     axis=0)
@@ -274,10 +285,12 @@ class Terrain:
             world_vertices[:, 1] += start_y * self.cfg.horizontal_scale
             all_vertices.append(world_vertices)
             all_triangles.append(local_triangles + vertex_offset)
+            all_ladder_triangle_masks.append(local_ladder_triangle_mask)
             vertex_offset += local_vertices.shape[0]
 
         self.vertices = np.concatenate(all_vertices, axis=0).astype(np.float32)
         self.triangles = np.concatenate(all_triangles, axis=0).astype(np.uint32)
+        self.ladder_triangle_mask = np.concatenate(all_ladder_triangle_masks, axis=0)
 
 
 def rasterize_ladder_bars(horizontal_scale,
@@ -417,6 +430,7 @@ def generate_ladder_bar_mesh(env_length,
                 start=start,
                 end=end,
             )
+    ladder_triangle_count = len(triangles)
     _append_platform_mesh(
         vertices,
         triangles,
@@ -440,6 +454,7 @@ def generate_ladder_bar_mesh(env_length,
         bar_y_scale,
         np.asarray(vertices, dtype=np.float32),
         np.asarray(triangles, dtype=np.uint32),
+        ladder_triangle_count,
         platform_center,
     )
 
