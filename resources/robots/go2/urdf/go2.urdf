@@ -311,12 +311,6 @@
       <mass value="0.04" />
       <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
     </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../dae/foot.dae" />
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="-0.002 0 0" rpy="0 0 0" />
       <geometry>
@@ -590,12 +584,6 @@
       <mass value="0.04" />
       <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
     </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../dae/foot.dae" />
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="-0.002 0 0" rpy="0 0 0" />
       <geometry>
@@ -869,12 +857,6 @@
       <mass value="0.04" />
       <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
     </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../dae/foot.dae" />
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="-0.002 0 0" rpy="0 0 0" />
       <geometry>
@@ -1148,12 +1130,6 @@
       <mass value="0.04" />
       <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
     </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../dae/foot.dae" />
-      </geometry>
-    </visual>
     <collision>
       <origin xyz="-0.002 0 0" rpy="0 0 0" />
       <geometry>
