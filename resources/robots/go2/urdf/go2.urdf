@@ -352,6 +352,14 @@
     <child link="FL_effector" />
     <axis xyz="0 0 0" />
   </joint>
+  <link name="FL_effector_center">
+  </link>
+  <joint name="FL_effector_center_joint" type="fixed" dont_collapse="true">
+    <origin xyz="-0.04 0 0" rpy="0 0 0" />
+    <parent link="FL_effector" />
+    <child link="FL_effector_center" />
+    <axis xyz="0 0 0" />
+  </joint>
   <link name="FL_end">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -623,6 +631,14 @@
     <origin xyz="-0.03 0 -0.042" rpy="0 0.12 0" />
     <parent link="FR_calflower" />
     <child link="FR_effector" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="FR_effector_center">
+  </link>
+  <joint name="FR_effector_center_joint" type="fixed" dont_collapse="true">
+    <origin xyz="-0.04 0 0" rpy="0 0 0" />
+    <parent link="FR_effector" />
+    <child link="FR_effector_center" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="FR_end">
@@ -898,6 +914,14 @@
     <child link="RL_effector" />
     <axis xyz="0 0 0" />
   </joint>
+  <link name="RL_effector_center">
+  </link>
+  <joint name="RL_effector_center_joint" type="fixed" dont_collapse="true">
+    <origin xyz="-0.04 0 0" rpy="0 0 0" />
+    <parent link="RL_effector" />
+    <child link="RL_effector_center" />
+    <axis xyz="0 0 0" />
+  </joint>
   <link name="RL_end">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
@@ -1169,6 +1193,14 @@
     <origin xyz="-0.03 0 -0.042" rpy="0 0.12 0" />
     <parent link="RR_calflower" />
     <child link="RR_effector" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="RR_effector_center">
+  </link>
+  <joint name="RR_effector_center_joint" type="fixed" dont_collapse="true">
+    <origin xyz="-0.04 0 0" rpy="0 0 0" />
+    <parent link="RR_effector" />
+    <child link="RR_effector_center" />
     <axis xyz="0 0 0" />
   </joint>
   <link name="RR_end">

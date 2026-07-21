@@ -1033,7 +1033,7 @@ class LeggedRobot(BaseTask):
         if not hasattr(self, "terrain_ladder_bar_along_distances"):
             return
 
-        effector_positions = self.rigid_body_states[:, self.feet_indices, :3]
+        effector_positions = self.rigid_body_states[:, self.distance_effector_indices, :3]
         ladder_origins = self.terrain_ladder_origins[self.terrain_levels, self.terrain_types]
         ladder_angles = torch.deg2rad(
             self.terrain_ladder_angles[self.terrain_levels, self.terrain_types]
@@ -1502,7 +1502,19 @@ class LeggedRobot(BaseTask):
             )
         else:
             self.symmetry_joint_pair_indices = torch.empty((0, 2), dtype=torch.long, device=self.device)
-        feet_names = [s for s in body_names if self.cfg.asset.foot_name in s]
+        # Match the configured terminal body name, not any intermediate frame
+        # that merely contains it (for example ``*_effector_center``).
+        feet_names = [s for s in body_names if s.endswith(self.cfg.asset.foot_name)]
+        distance_link_name = getattr(self.cfg.asset, "distance_link_name", self.cfg.asset.foot_name)
+        distance_effector_names = [
+            f"{foot_name[:-len(self.cfg.asset.foot_name)]}{distance_link_name}"
+            for foot_name in feet_names
+        ]
+        missing_distance_links = [name for name in distance_effector_names if name not in body_names]
+        if missing_distance_links:
+            raise ValueError(
+                f"Missing distance links for force feet {feet_names}: {missing_distance_links}"
+            )
         penalized_contact_names = []
         for name in self.cfg.asset.penalize_contacts_on:
             penalized_contact_names.extend([s for s in body_names if name in s])
@@ -1543,6 +1555,13 @@ class LeggedRobot(BaseTask):
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
             self.feet_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], feet_names[i])
+        self.distance_effector_indices = torch.zeros(
+            len(distance_effector_names), dtype=torch.long, device=self.device, requires_grad=False
+        )
+        for i in range(len(distance_effector_names)):
+            self.distance_effector_indices[i] = self.gym.find_actor_rigid_body_handle(
+                self.envs[0], self.actor_handles[0], distance_effector_names[i]
+            )
         body_props = self.gym.get_actor_rigid_body_properties(self.envs[0], self.actor_handles[0])
         self.rigid_body_masses = torch.tensor(
             [body_prop.mass for body_prop in body_props],
@@ -1551,6 +1570,7 @@ class LeggedRobot(BaseTask):
             requires_grad=False,
         )
         self.foot_name_to_obs_index = {name: i for i, name in enumerate(feet_names)}
+        self.distance_effector_names = distance_effector_names
 
         self.penalised_contact_indices = torch.zeros(len(penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(penalized_contact_names)):

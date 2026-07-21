@@ -67,6 +67,7 @@ class GO2LadderCfg( LeggedRobotCfg ):
         file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf"
         name = "go2"
         foot_name = "effector"
+        distance_link_name = "effector_center"
         penalize_contacts_on = ["thigh", "hip"]
         terminate_after_contacts_on = ["base", "Head_upper", "Head_lower"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter

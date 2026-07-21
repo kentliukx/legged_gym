@@ -168,10 +168,7 @@ def print_student_diagnostics(diagnostics, env, robot_index, step):
         f"  ladder_obs     reconstructed={values(diagnostics['reconstructed_ladder'])} "
         f"target={values(diagnostics['ladder_target'])}"
     )
-    foot_names = [
-        name for name, _ in sorted(env.foot_name_to_obs_index.items(), key=lambda item: item[1])
-    ]
-    print(f"  effector order={foot_names}")
+    print(f"  distance link order={env.distance_effector_names}")
     print(
         "  ladder_plane_distance[m] "
         f"signed={values(env.effector_ladder_plane_distance[robot_index])}"
@@ -226,7 +223,7 @@ def draw_effector_ladder_distance_lines(env, robot_index):
     if env.viewer is None or not hasattr(env, "effector_on_ladder_plane"):
         return
 
-    effector_positions = env.rigid_body_states[robot_index, env.feet_indices, :3]
+    effector_positions = env.rigid_body_states[robot_index, env.distance_effector_indices, :3]
     on_ladder_plane = env.effector_on_ladder_plane[robot_index]
     distances = env.effector_ladder_plane_distance[robot_index]
     ladder_angle = torch.deg2rad(
