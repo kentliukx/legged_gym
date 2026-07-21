@@ -122,6 +122,7 @@ class LeggedRobot(BaseTask):
         self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        self._update_effector_ladder_distances()
         self._update_feet_air_time_state()
         self._update_symmetry_torque_state()
 
@@ -1019,6 +1020,64 @@ class LeggedRobot(BaseTask):
         ladder_obs[:, 4] = bar_y_scale
         return ladder_obs
 
+    def _update_effector_ladder_distances(self):
+        """Update effector distances in the ladder-plane coordinate frame.
+
+        A foot is on the ladder only when its world x lies between the ladder
+        ground intersection and its topmost rung. Else, plane distance means
+        world-z height above the ground/platform support map.
+        """
+        self.effector_ladder_plane_distance.zero_()
+        self.effector_nearest_bar_distance.zero_()
+        self.effector_on_ladder_plane.zero_()
+        if not hasattr(self, "terrain_ladder_bar_along_distances"):
+            return
+
+        effector_positions = self.rigid_body_states[:, self.feet_indices, :3]
+        ladder_origins = self.terrain_ladder_origins[self.terrain_levels, self.terrain_types]
+        ladder_angles = torch.deg2rad(
+            self.terrain_ladder_angles[self.terrain_levels, self.terrain_types]
+        )
+        offset_x = effector_positions[..., 0] - ladder_origins[:, None, 0]
+        offset_z = effector_positions[..., 2] - ladder_origins[:, None, 2]
+        cos_angle = torch.cos(ladder_angles)[:, None]
+        sin_angle = torch.sin(ladder_angles)[:, None]
+
+        along_ladder = offset_x * cos_angle + offset_z * sin_angle
+        bar_along_distances = self.terrain_ladder_bar_along_distances[
+            self.terrain_levels, self.terrain_types
+        ]
+        bar_counts = self.terrain_ladder_bar_counts[self.terrain_levels, self.terrain_types]
+        valid_bars = torch.arange(
+            bar_along_distances.shape[1], device=self.device
+        )[None, :] < bar_counts[:, None]
+        top_bar_along = bar_along_distances.masked_fill(~valid_bars, float("-inf")).amax(dim=1)
+        top_bar_x = ladder_origins[:, 0] + top_bar_along * cos_angle[:, 0]
+        ladder_x_min = torch.minimum(ladder_origins[:, 0], top_bar_x)
+        ladder_x_max = torch.maximum(ladder_origins[:, 0], top_bar_x)
+        on_ladder_plane = (
+            (bar_counts[:, None] > 0)
+            & (effector_positions[..., 0] >= ladder_x_min[:, None])
+            & (effector_positions[..., 0] <= ladder_x_max[:, None])
+        )
+        self.effector_on_ladder_plane[:] = on_ladder_plane
+        nearest_bar_distance = torch.abs(
+            along_ladder[:, :, None] - bar_along_distances[:, None, :]
+        ).masked_fill(~valid_bars[:, None, :], float("inf")).amin(dim=2)
+        support_height = self._sample_height_map_at_world_points(
+            effector_positions, self.support_height_samples
+        )
+        self.effector_nearest_bar_distance[:] = torch.where(
+            on_ladder_plane,
+            nearest_bar_distance,
+            torch.zeros_like(nearest_bar_distance),
+        )
+        self.effector_ladder_plane_distance[:] = torch.where(
+            on_ladder_plane,
+            offset_x * sin_angle - offset_z * cos_angle,
+            effector_positions[..., 2] - support_height,
+        )
+
     def _lerp_cfg_range(self, value_range, difficulty):
         if np.isscalar(value_range):
             return torch.full_like(difficulty, float(value_range))
@@ -1150,6 +1209,13 @@ class LeggedRobot(BaseTask):
             self.terrain_platform_centers = torch.from_numpy(self.terrain.platform_centers).to(self.device).to(torch.float)
             self.terrain_ladder_mask = torch.from_numpy(self.terrain.ladder_mask).to(self.device)
             self.terrain_ladder_bar_spacing = torch.from_numpy(self.terrain.ladder_bar_spacing).to(self.device).to(torch.float)
+            self.terrain_ladder_bar_counts = torch.from_numpy(self.terrain.ladder_bar_counts).to(self.device)
+            self.terrain_ladder_bar_along_distances = torch.from_numpy(
+                self.terrain.ladder_bar_along_distances
+            ).to(self.device).to(torch.float)
+            self.support_height_samples = torch.from_numpy(
+                self.terrain.support_heightsamples
+            ).view(self.terrain.obs_tot_rows, self.terrain.obs_tot_cols).to(self.device)
             self.terrain_ladder_angles = torch.from_numpy(self.terrain.ladder_angles).to(self.device).to(torch.float)
             self.terrain_ladder_bar_y_scales = torch.from_numpy(self.terrain.ladder_bar_y_scales).to(self.device).to(torch.float)
         self.goal_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
@@ -1165,6 +1231,13 @@ class LeggedRobot(BaseTask):
         self.feet_last_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.min_feet_last_ground_time = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         self.foot_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
+        self.effector_ladder_plane_distance = torch.zeros(
+            self.num_envs, len(self.feet_indices), dtype=torch.float, device=self.device, requires_grad=False
+        )
+        self.effector_nearest_bar_distance = torch.zeros_like(self.effector_ladder_plane_distance)
+        self.effector_on_ladder_plane = torch.zeros(
+            self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False
+        )
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.phase_feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.phase_feet_first_contact = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
@@ -1746,6 +1819,8 @@ class LeggedRobot(BaseTask):
                 target_geom = target_reached_geom if self.reached_goal[i, 0] > 0.5 else target_unreached_geom
                 gymutil.draw_lines(target_geom, self.gym, self.viewer, self.envs[i], target_pose)
 
+            if not getattr(self, "draw_height_measurements", True):
+                continue
             base_pos = (self.root_states[i, :3]).cpu().numpy()
             heights = self.measured_heights[i].cpu().numpy()
             height_points = quat_apply_yaw(self.base_quat[i].repeat(heights.shape[0]), self.height_points[i]).cpu().numpy()
@@ -1811,6 +1886,16 @@ class LeggedRobot(BaseTask):
         heights = torch.min(heights, heights3)
 
         return heights.view(self.num_envs, -1) * self.terrain.cfg.vertical_scale
+
+    def _sample_height_map_at_world_points(self, points, height_samples):
+        """Sample a height map at world-frame points of shape [env, point, 3]."""
+        grid_points = ((points[..., :2] + self.terrain.cfg.border_size)
+                       / self.terrain.obs_horizontal_scale).long()
+        px = torch.clip(grid_points[..., 0].reshape(-1), 0, height_samples.shape[0] - 2)
+        py = torch.clip(grid_points[..., 1].reshape(-1), 0, height_samples.shape[1] - 2)
+        heights = torch.min(height_samples[px, py], height_samples[px + 1, py])
+        heights = torch.min(heights, height_samples[px, py + 1])
+        return heights.view(*grid_points.shape[:-1]) * self.terrain.cfg.vertical_scale
 
     #------------ reward functions----------------
     def _reward_alive(self):

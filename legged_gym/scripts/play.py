@@ -147,7 +147,7 @@ def get_student_diagnostics(actor_critic, observations, robot_index):
     }
 
 
-def print_student_diagnostics(diagnostics, step):
+def print_student_diagnostics(diagnostics, env, robot_index, step):
     def values(tensor):
         return np.array2string(
             tensor.cpu().numpy(),
@@ -167,6 +167,18 @@ def print_student_diagnostics(diagnostics, step):
     print(
         f"  ladder_obs     reconstructed={values(diagnostics['reconstructed_ladder'])} "
         f"target={values(diagnostics['ladder_target'])}"
+    )
+    foot_names = [
+        name for name, _ in sorted(env.foot_name_to_obs_index.items(), key=lambda item: item[1])
+    ]
+    print(f"  effector order={foot_names}")
+    print(
+        "  ladder_plane_distance[m] "
+        f"signed={values(env.effector_ladder_plane_distance[robot_index])}"
+    )
+    print(
+        "  nearest_bar_distance[m] "
+        f"absolute={values(env.effector_nearest_bar_distance[robot_index])}"
     )
     height_mse = torch.mean(
         (diagnostics["reconstructed_height"] - diagnostics["reconstructed_height_target"]) ** 2
@@ -209,6 +221,59 @@ def draw_reconstructed_heightmap(env, reconstructed_height, visualization_frame,
         )
 
 
+def draw_effector_ladder_distance_lines(env, robot_index):
+    """Draw each effector's distance projection used by the environment buffers."""
+    if env.viewer is None or not hasattr(env, "effector_on_ladder_plane"):
+        return
+
+    effector_positions = env.rigid_body_states[robot_index, env.feet_indices, :3]
+    on_ladder_plane = env.effector_on_ladder_plane[robot_index]
+    distances = env.effector_ladder_plane_distance[robot_index]
+    ladder_angle = torch.deg2rad(
+        env.terrain_ladder_angles[env.terrain_levels[robot_index], env.terrain_types[robot_index]]
+    )
+    inward_normal = torch.stack((torch.sin(ladder_angle), torch.zeros_like(ladder_angle), -torch.cos(ladder_angle)))
+    ladder_tangent = torch.stack((torch.cos(ladder_angle), torch.zeros_like(ladder_angle), torch.sin(ladder_angle)))
+    ladder_origin = env.terrain_ladder_origins[
+        env.terrain_levels[robot_index], env.terrain_types[robot_index]
+    ]
+    bar_along_distances = env.terrain_ladder_bar_along_distances[
+        env.terrain_levels[robot_index], env.terrain_types[robot_index]
+    ]
+    bar_count = env.terrain_ladder_bar_counts[
+        env.terrain_levels[robot_index], env.terrain_types[robot_index]
+    ]
+    valid_bars = torch.arange(bar_along_distances.shape[0], device=env.device) < bar_count
+
+    for foot_index in range(effector_positions.shape[0]):
+        position = effector_positions[foot_index]
+        if on_ladder_plane[foot_index].item():
+            projection = position - distances[foot_index] * inward_normal
+            color = gymapi.Vec3(1.0, 0.35, 0.0)  # Orange: perpendicular to ladder plane.
+            along_ladder = torch.dot(position - ladder_origin, ladder_tangent)
+            nearest_bar_index = torch.argmin(
+                torch.abs(along_ladder - bar_along_distances).masked_fill(~valid_bars, float("inf"))
+            )
+            nearest_bar = ladder_origin + ladder_tangent * bar_along_distances[nearest_bar_index]
+            # A rung runs along y, so its closest point shares the projection's y.
+            nearest_bar[1] = projection[1]
+            gymutil.draw_line(
+                gymapi.Vec3(*projection.cpu().tolist()),
+                gymapi.Vec3(*nearest_bar.cpu().tolist()),
+                gymapi.Vec3(0.3, 1.0, 0.1),  # Green: projection-to-nearest-rung distance.
+                env.gym,
+                env.viewer,
+                env.envs[robot_index],
+            )
+        else:
+            projection = position.clone()
+            projection[2] -= distances[foot_index]
+            color = gymapi.Vec3(0.0, 0.9, 1.0)  # Cyan: world-z height above ground/platform.
+        start = gymapi.Vec3(*position.cpu().tolist())
+        end = gymapi.Vec3(*projection.cpu().tolist())
+        gymutil.draw_line(start, end, color, env.gym, env.viewer, env.envs[robot_index])
+
+
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     # override some parameters for testing
@@ -223,6 +288,7 @@ def play(args):
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
+    env.draw_height_measurements = VISUALIZE_HEIGHTMAP
     obs = env.get_observations()
     # load policy
     train_cfg.runner.resume = True
@@ -325,7 +391,7 @@ def play(args):
                     student_policy(obs.detach())
                 actions = policy(obs.detach())
                 if (PRINT_STUDENT_DIAGNOSTICS
-                        or VISUALIZE_RECONSTRUCTED_HEIGHTMAP
+                        or VISUALIZE_HEIGHTMAP
                         or VISUALIZE_HEIGHT_COMPARISON):
                     diagnostics = get_student_diagnostics(
                         ppo_runner.alg.actor_critic,
@@ -338,12 +404,12 @@ def play(args):
                             robot_index,
                         )
             if PRINT_STUDENT_DIAGNOSTICS and diagnostics is not None and i % diagnostic_print_interval == 0:
-                print_student_diagnostics(diagnostics, i)
+                print_student_diagnostics(diagnostics, env, robot_index, i)
             obs, _, rews, dones, infos = env.step(actions.detach())
             with torch.inference_mode():
                 ppo_runner.alg.actor_critic.reset(dones)
             depth_camera_updated = env.depth_image_delivered_this_step
-            if (VISUALIZE_RECONSTRUCTED_HEIGHTMAP
+            if (VISUALIZE_HEIGHTMAP
                     and diagnostics is not None
                     and env.viewer is not None):
                 draw_reconstructed_heightmap(
@@ -358,6 +424,8 @@ def play(args):
                     diagnostics["height_visualization_frame"],
                     reconstructed_height_target_geometry,
                 )
+            if VISUALIZE_EFFECTOR_LADDER_DISTANCES:
+                draw_effector_ladder_distance_lines(env, robot_index)
             if (depth_frame_queue is not None
                     and depth_process.is_alive()
                     and depth_camera_updated):
@@ -456,7 +524,8 @@ if __name__ == '__main__':
     PLOT_STATES = True
     PRINT_STUDENT_DIAGNOSTICS = True
     DIAGNOSTIC_PRINT_INTERVAL_S = 1.0
-    VISUALIZE_RECONSTRUCTED_HEIGHTMAP = True
-    VISUALIZE_HEIGHT_COMPARISON = True
+    VISUALIZE_HEIGHTMAP = False
+    VISUALIZE_HEIGHT_COMPARISON = False
+    VISUALIZE_EFFECTOR_LADDER_DISTANCES = True
     args = get_args()
     play(args)

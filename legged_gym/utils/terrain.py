@@ -72,6 +72,11 @@ class Terrain:
         self.platform_centers = np.zeros((cfg.num_rows, self.num_cols, 3), dtype=np.float32)
         self.ladder_mask = np.ones((cfg.num_rows, self.num_cols), dtype=np.bool_)
         self.ladder_bar_spacing = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
+        self.ladder_bar_counts = np.zeros((cfg.num_rows, self.num_cols), dtype=np.int32)
+        self.max_ladder_bar_count = int(np.ceil(_range_max(_cfg_to_dict(cfg.terrain_kwargs).get("bar_count", 0))))
+        self.ladder_bar_along_distances = np.full(
+            (cfg.num_rows, self.num_cols, self.max_ladder_bar_count), np.nan, dtype=np.float32
+        )
         self.ladder_angles = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
         self.ladder_bar_y_scales = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
 
@@ -90,6 +95,7 @@ class Terrain:
         self.obs_tot_rows = int(cfg.num_rows * self.obs_length_per_env_pixels) + 2 * self.obs_border
 
         self.height_field_raw = np.zeros((self.obs_tot_rows, self.obs_tot_cols), dtype=np.int16)
+        self.support_height_field_raw = np.zeros((self.obs_tot_rows, self.obs_tot_cols), dtype=np.int16)
         self.physics_height_field_raw = np.zeros((self.tot_rows, self.tot_cols), dtype=np.int16)
         self.vertices = None
         self.triangles = None
@@ -98,6 +104,7 @@ class Terrain:
         self._selected_ladder_bars_terrain(**terrain_kwargs)
 
         self.heightsamples = self.height_field_raw
+        self.support_heightsamples = self.support_height_field_raw
         self.physics_heightsamples = self.physics_height_field_raw
 
     def _selected_ladder_bars_terrain(self,
@@ -147,6 +154,7 @@ class Terrain:
 
             if is_rough:
                 self.ladder_bar_spacing[i, j] = tile_bar_spacing
+                self.ladder_bar_counts[i, j] = 0
                 self.ladder_angles[i, j] = 0.0
                 self.ladder_bar_y_scales[i, j] = max_bar_y_scale
                 local_physics_height_field = np.zeros(
@@ -155,6 +163,7 @@ class Terrain:
                 local_height_field = np.zeros(
                     (self.obs_length_per_env_pixels, self.obs_width_per_env_pixels),
                     dtype=np.int16)
+                local_support_height_field = np.zeros_like(local_height_field)
                 platform_center = np.asarray([self.env_length * 0.85, self.env_width * 0.5, 0.0], dtype=np.float32)
                 ladder_origin = np.asarray([self.env_length * 0.5, self.env_width * 0.5, 0.0], dtype=np.float32)
                 local_vertices = np.zeros((0, 3), dtype=np.float32)
@@ -191,10 +200,18 @@ class Terrain:
                     bar_triangles=bar_triangles,
                     side_bar_vertices=side_bar_vertices,
                     side_bar_triangles=side_bar_triangles)
+                self.ladder_bar_counts[i, j] = len(bar_centers)
                 self.ladder_bar_y_scales[i, j] = tile_bar_y_scale
                 ladder_origin = np.asarray(
                     [self.env_length * 0.5 + ladder_x_offset, self.env_width * 0.5, 0.0],
                     dtype=np.float32,
+                )
+                ladder_direction = np.asarray(
+                    [np.cos(np.deg2rad(tile_ladder_angle)), 0.0, np.sin(np.deg2rad(tile_ladder_angle))],
+                    dtype=np.float32,
+                )
+                self.ladder_bar_along_distances[i, j, :len(bar_centers)] = (
+                    (bar_centers - ladder_origin) @ ladder_direction
                 )
 
                 # Height scan is intentionally simple: inside a bar/platform XY
@@ -211,6 +228,16 @@ class Terrain:
                     platform_length=platform_length,
                     platform_width=platform_width,
                     platform_gap=platform_gap)
+                local_support_height_field = rasterize_ladder_support(
+                    horizontal_scale=self.obs_horizontal_scale,
+                    vertical_scale=self.cfg.vertical_scale,
+                    num_rows=self.obs_length_per_env_pixels,
+                    num_cols=self.obs_width_per_env_pixels,
+                    bar_centers=bar_centers,
+                    platform_length=platform_length,
+                    platform_width=platform_width,
+                    platform_gap=platform_gap,
+                )
                 local_physics_height_field = np.zeros(
                     (self.length_per_env_pixels, self.width_per_env_pixels),
                     dtype=np.int16)
@@ -260,6 +287,9 @@ class Terrain:
             self.height_field_raw[
                 obs_start_x:obs_start_x + self.obs_length_per_env_pixels,
                 obs_start_y:obs_start_y + self.obs_width_per_env_pixels] = local_height_field
+            self.support_height_field_raw[
+                obs_start_x:obs_start_x + self.obs_length_per_env_pixels,
+                obs_start_y:obs_start_y + self.obs_width_per_env_pixels] = local_support_height_field
             self.physics_height_field_raw[
                 start_x:start_x + self.length_per_env_pixels,
                 start_y:start_y + self.width_per_env_pixels] = local_physics_height_field
@@ -342,6 +372,31 @@ def rasterize_ladder_bars(horizontal_scale,
         platform_length=platform_length,
         platform_width=platform_width,
         platform_gap=platform_gap)
+    return height_field
+
+
+def rasterize_ladder_support(horizontal_scale,
+                             vertical_scale,
+                             num_rows,
+                             num_cols,
+                             bar_centers,
+                             platform_length=1.0,
+                             platform_width=1.2,
+                             platform_gap=0.1,
+                             base_height=0.0):
+    """Height map of traversable ground and platform, excluding ladder bars."""
+    height_field = np.full((num_rows, num_cols), int(np.round(base_height / vertical_scale)), dtype=np.int16)
+    # Treat the gap after the last rung as platform support for a continuous
+    # world-z reference when an effector leaves the ladder plane.
+    _fill_platform_height(
+        height_field,
+        horizontal_scale=horizontal_scale,
+        vertical_scale=vertical_scale,
+        bar_centers=bar_centers,
+        platform_length=platform_length + platform_gap,
+        platform_width=platform_width,
+        platform_gap=0.0,
+    )
     return height_field
 
 
