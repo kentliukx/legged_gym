@@ -160,7 +160,7 @@ def get_args():
         
         {"name": "--headless", "action": "store_true", "default": False, "help": "Force display off at all times"},
         {"name": "--sample", "action": "store_true", "default": False, "help": "Use stochastic policy sampling during play instead of deterministic mean actions."},
-        {"name": "--teacher", "action": "store_true", "default": False, "help": "Use Teacher actions during play while running Student diagnostics."},
+        {"name": "--mode", "type": str, "default": "student", "choices": ["student", "teacher"], "help": "Select the Student GRU policy or privileged Teacher PPO policy."},
         {"name": "--horovod", "action": "store_true", "default": False, "help": "Use horovod for multi-gpu training"},
         {"name": "--rl_device", "type": str, "default": "cuda:0", "help": 'Device used by the RL algorithm, (cpu, gpu, cuda:0, cuda:1 etc..)'},
         {"name": "--num_envs", "type": int, "help": "Number of environments to create. Overrides config file if provided."},

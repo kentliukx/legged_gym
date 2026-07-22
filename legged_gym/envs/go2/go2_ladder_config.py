@@ -106,6 +106,6 @@ class GO2LadderCfg( LeggedRobotCfg ):
 
 class GO2LadderCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
-        policy_class_name = 'ActorCriticRecurrent'
+        policy_class_name = 'StudentActorCritic'
         experiment_name = 'go2_ladder'
         teacher_checkpoint = 'logs/go2_ladder/Teacher/model_30000.pt'

@@ -273,6 +273,8 @@ def draw_effector_ladder_distance_lines(env, robot_index):
 
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
+    teacher_mode = args.mode == "teacher"
+    default_teacher_checkpoint = train_cfg.runner.teacher_checkpoint
     # override some parameters for testing
 
     env_cfg.terrain.num_cols = 1
@@ -285,21 +287,21 @@ def play(args):
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
-    env.draw_height_measurements = VISUALIZE_HEIGHTMAP
+    env.draw_height_measurements = VISUALIZE_HEIGHTMAP and not teacher_mode
     obs = env.get_observations()
     # load policy
-    train_cfg.runner.resume = True
+    use_default_teacher_checkpoint = (
+        teacher_mode and not args.resume and args.load_run is None and args.checkpoint is None
+    )
+    train_cfg.runner.resume = not use_default_teacher_checkpoint
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
-    teacher_action_mode = args.teacher
-    if teacher_action_mode:
-        student_policy = ppo_runner.get_inference_policy(device=env.device)
-        teacher = ppo_runner.load_teacher_policy()
-        if teacher is None:
-            raise RuntimeError("--teacher requires runner.teacher_checkpoint")
-        teacher.eval()
-        teacher.to(env.device)
-        policy = teacher.act_inference
-        print("Play mode: Teacher actions with Student diagnostics")
+    if teacher_mode:
+        if use_default_teacher_checkpoint:
+            teacher_checkpoint = os.path.join(LEGGED_GYM_ROOT_DIR, default_teacher_checkpoint)
+            print(f"Loading Teacher model from: {teacher_checkpoint}")
+            ppo_runner.load(teacher_checkpoint)
+        policy = ppo_runner.get_inference_policy(device=env.device)
+        print("Play mode: Teacher deterministic actions")
     elif args.sample:
         student_policy = None
         ppo_runner.alg.actor_critic.eval()
@@ -364,7 +366,7 @@ def play(args):
             daemon=True,
         )
         depth_process.start()
-    if VISUALIZE_HEIGHT_COMPARISON and not args.headless:
+    if VISUALIZE_HEIGHT_COMPARISON and not teacher_mode and not args.headless:
         if mp_context is None:
             mp_context = mp.get_context("spawn")
         height_frame_queue = mp_context.Queue(maxsize=1)
@@ -384,12 +386,10 @@ def play(args):
     try:
         for i in range(100*int(env.max_episode_length)):
             with torch.inference_mode():
-                if teacher_action_mode:
-                    student_policy(obs.detach())
                 actions = policy(obs.detach())
-                if (PRINT_STUDENT_DIAGNOSTICS
+                if (not teacher_mode and (PRINT_STUDENT_DIAGNOSTICS
                         or VISUALIZE_HEIGHTMAP
-                        or VISUALIZE_HEIGHT_COMPARISON):
+                        or VISUALIZE_HEIGHT_COMPARISON)):
                     diagnostics = get_student_diagnostics(
                         ppo_runner.alg.actor_critic,
                         obs.detach(),
@@ -400,13 +400,14 @@ def play(args):
                             env,
                             robot_index,
                         )
-            if PRINT_STUDENT_DIAGNOSTICS and diagnostics is not None and i % diagnostic_print_interval == 0:
+            if (not teacher_mode and PRINT_STUDENT_DIAGNOSTICS
+                    and diagnostics is not None and i % diagnostic_print_interval == 0):
                 print_student_diagnostics(diagnostics, env, robot_index, i)
             obs, _, rews, dones, infos = env.step(actions.detach())
             with torch.inference_mode():
                 ppo_runner.alg.actor_critic.reset(dones)
             depth_camera_updated = env.depth_image_delivered_this_step
-            if (VISUALIZE_HEIGHTMAP
+            if (not teacher_mode and VISUALIZE_HEIGHTMAP
                     and diagnostics is not None
                     and env.viewer is not None):
                 draw_reconstructed_heightmap(

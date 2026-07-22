@@ -134,10 +134,24 @@ class TaskRegistry():
                 print(f"'train_cfg' provided -> Ignoring 'name={name}'")
         # override cfg from args (if specified)
         _, train_cfg = update_cfg_from_args(None, train_cfg, args)
+        train_mode = getattr(args, "mode", "student")
+        if train_mode == "teacher":
+            train_cfg.runner.policy_class_name = "TeacherActorCritic"
+            train_cfg.runner.teacher_checkpoint = None
+            print("Training mode: Teacher PPO (privileged state + height scan)")
+        elif train_mode != "student":
+            raise ValueError(f"Unknown train_mode '{train_mode}'. Expected 'student' or 'teacher'.")
+        else:
+            print("Training mode: Student GRU policy")
 
         if log_root=="default":
-            log_root = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name)
-            log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.runner.run_name)
+            if train_mode == "teacher":
+                log_root = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name)
+                run_name = f"_teacher_{train_cfg.runner.run_name}" if train_cfg.runner.run_name else "_teacher"
+            else:
+                log_root = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name)
+                run_name = f"_{train_cfg.runner.run_name}"
+            log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + run_name)
         elif log_root is None:
             log_dir = None
         else:
