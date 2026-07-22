@@ -225,6 +225,7 @@ class LeggedRobotCfg(BaseConfig):
             foot_clearance = -0.2
             feet_air_time = 1
             feet_ground_time = 1
+            ladder_contact_precision = 0.1
             excess_feet_air_time = -5
             contact_symmetry = 0.05
             feet_contact_forces = -0.01
@@ -270,6 +271,7 @@ class LeggedRobotCfg(BaseConfig):
         phase_contact_force_threshold = 20.0
         flat_height_std_threshold = 0.1
         foot_clearance_target = 0.1
+        ladder_contact_precision_threshold = 0.03
 
     class normalization:
         class obs_scales:

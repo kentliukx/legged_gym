@@ -2164,6 +2164,22 @@ class LeggedRobot(BaseTask):
         rew_ground_time *= (1. - goal_reached)
         return rew_ground_time
 
+    def _reward_ladder_contact_precision(self):
+        """Reward contacts within a circular tolerance around a rung center."""
+        distance_threshold = self.cfg.rewards.ladder_contact_precision_threshold
+        squared_alignment_distance = (
+            torch.square(self.effector_ladder_plane_distance)
+            + torch.square(self.effector_nearest_bar_distance)
+        )
+        aligned_contact = (
+            self._get_foot_contacts()
+            & self.effector_on_ladder_plane
+            & (squared_alignment_distance < torch.square(
+                torch.as_tensor(distance_threshold, device=self.device)
+            ))
+        )
+        return torch.sum(aligned_contact.float(), dim=1)
+
     def _reward_excess_feet_air_time(self):
         phase_contact = self._get_phase_foot_contacts()
         effective_phase_air_time = self.phase_feet_air_time + self.dt * (~phase_contact).float()
