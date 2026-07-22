@@ -313,9 +313,12 @@ class LeggedRobot(BaseTask):
             adds each terms to the episode sums and to the total reward
         """
         self.rew_buf[:] = 0.
+        slow_reward_coeff = self._update_slow_reward_coeff()
         for i in range(len(self.reward_functions)):
             name = self.reward_names[i]
             rew = self.reward_functions[i]() * self.reward_scales[name]
+            if name in self.slow_reward_names:
+                rew *= slow_reward_coeff
             self.rew_buf += rew
             self.episode_sums[name] += rew
         if self.cfg.rewards.only_positive_rewards:
@@ -325,6 +328,22 @@ class LeggedRobot(BaseTask):
             rew = self._reward_termination() * self.reward_scales["termination"]
             self.rew_buf += rew
             self.episode_sums["termination"] += rew
+
+    def _update_slow_reward_coeff(self):
+        """Linearly anneal slow-movement penalties from the global mean episode return."""
+        low, high = self.slow_reward_coeff
+        mean_episode_reward = torch.mean(sum(self.episode_sums.values()))
+        reward_span = self.slow_reward_coeff_upper_reward_limit - self.slow_reward_coeff_lower_reward_limit
+        progress = torch.clamp(
+            (mean_episode_reward - self.slow_reward_coeff_lower_reward_limit) / reward_span,
+            min=0.0,
+            max=1.0,
+        )
+        target_coeff = low + (high - low) * progress
+        self.slow_reward_coeff_buf.mul_(1.0 - self.slow_reward_coeff_lpf_k).add_(
+            self.slow_reward_coeff_lpf_k * target_coeff
+        )
+        return self.slow_reward_coeff_buf
     
     def compute_observations(self):
         """ Computes observations
@@ -1368,6 +1387,34 @@ class LeggedRobot(BaseTask):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
             Looks for self._reward_<REWARD_NAME>, where <REWARD_NAME> are names of all non zero reward scales in the cfg.
         """
+        # This is a reward-scaling meta parameter, not a reward term.
+        self.slow_reward_coeff = self.reward_scales.pop("slow_reward_coeff", [1.0, 1.0])
+        if len(self.slow_reward_coeff) != 2:
+            raise ValueError("rewards.scales.slow_reward_coeff must contain [low, high].")
+        self.slow_reward_coeff_lower_reward_limit = float(
+            self.reward_scales.pop("slow_reward_coeff_lower_reward_limit", 0.0)
+        )
+        self.slow_reward_coeff_upper_reward_limit = float(
+            self.reward_scales.pop("slow_reward_coeff_upper_reward_limit", 1.0)
+        )
+        self.slow_reward_coeff_lpf_k = float(self.reward_scales.pop("slow_reward_coeff_lpf_k", 1.0))
+        if self.slow_reward_coeff_upper_reward_limit <= self.slow_reward_coeff_lower_reward_limit:
+            raise ValueError("slow_reward_coeff_upper_reward_limit must exceed the lower limit.")
+        if not 0.0 <= self.slow_reward_coeff_lpf_k <= 1.0:
+            raise ValueError("slow_reward_coeff_lpf_k must be within [0, 1].")
+        self.slow_reward_coeff_buf = torch.tensor(
+            float(self.slow_reward_coeff[0]), dtype=torch.float, device=self.device
+        )
+        self.slow_reward_names = {
+            "lin_vel_z",
+            "ang_vel_xy",
+            "action_rate",
+            "action_smoothness",
+            "torques",
+            "dof_vel",
+            "dof_acc",
+        }
+
         # remove zero scales + multiply non-zero ones by dt
         for key in list(self.reward_scales.keys()):
             scale = self.reward_scales[key]

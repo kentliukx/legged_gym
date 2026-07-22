@@ -215,11 +215,8 @@ class LeggedRobotCfg(BaseConfig):
             alive = 3
             position_tracking = 3
 
-            # Slow movement rewards
-            lin_vel_z = -2
-            ang_vel_xy = -0.05
-
             # Shaping rewards
+            dof_pos_limits = -5
             flat_orientation_when_flat = -5.0
             foot_slippage = -0.2
             foot_clearance = -0.2
@@ -234,12 +231,18 @@ class LeggedRobotCfg(BaseConfig):
             stand_still_contact_when_reached_goal = -0.5
 
             # Slow movement rewards
+            slow_reward_coeff = [0.5, 1.0]
+            slow_reward_coeff_upper_reward_limit = 50
+            slow_reward_coeff_lower_reward_limit = 0
+            slow_reward_coeff_lpf_k = 0.05
+
+            lin_vel_z = -2
+            ang_vel_xy = -0.05
             action_rate = -0.02
             action_smoothness = -0.02
             torques = -2e-4
             dof_vel = -5e-4
             dof_acc = -2e-7
-            dof_pos_limits = -5
 
             # Unused rewards
             heading_tracking = 0
