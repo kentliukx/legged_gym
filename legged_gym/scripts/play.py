@@ -300,8 +300,15 @@ def play(args):
             teacher_checkpoint = os.path.join(LEGGED_GYM_ROOT_DIR, default_teacher_checkpoint)
             print(f"Loading Teacher model from: {teacher_checkpoint}")
             ppo_runner.load(teacher_checkpoint)
-        policy = ppo_runner.get_inference_policy(device=env.device)
-        print("Play mode: Teacher deterministic actions")
+        if args.sample:
+            ppo_runner.alg.actor_critic.eval()
+            if env.device != "cpu":
+                ppo_runner.alg.actor_critic.to(env.device)
+            policy = ppo_runner.alg.actor_critic.act
+            print("Play mode: Teacher stochastic actions")
+        else:
+            policy = ppo_runner.get_inference_policy(device=env.device)
+            print("Play mode: Teacher deterministic actions")
     elif args.sample:
         student_policy = None
         ppo_runner.alg.actor_critic.eval()
