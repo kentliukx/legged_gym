@@ -231,6 +231,7 @@ class LeggedRobot(BaseTask):
         self.reset_buf[env_ids] = 1
         # fill extras
         self.extras["episode"] = {}
+        self._record_slow_reward_episode_returns(env_ids)
         for key in self.episode_sums.keys():
             self.extras["episode"]['rew_' + key] = torch.mean(self.episode_sums[key][env_ids]) / self.max_episode_length_s
             self.episode_sums[key][env_ids] = 0.
@@ -328,11 +329,16 @@ class LeggedRobot(BaseTask):
             rew = self._reward_termination() * self.reward_scales["termination"]
             self.rew_buf += rew
             self.episode_sums["termination"] += rew
+        self.episode_return_sums += self.rew_buf
 
     def _update_slow_reward_coeff(self):
         """Linearly anneal slow-movement penalties from the global mean episode return."""
+        if self.slow_reward_episode_return_count == 0:
+            return self.slow_reward_coeff_buf
         low, high = self.slow_reward_coeff
-        mean_episode_reward = torch.mean(sum(self.episode_sums.values()))
+        mean_episode_reward = torch.mean(
+            self.slow_reward_episode_returns[:self.slow_reward_episode_return_count]
+        )
         reward_span = self.slow_reward_coeff_upper_reward_limit - self.slow_reward_coeff_lower_reward_limit
         progress = torch.clamp(
             (mean_episode_reward - self.slow_reward_coeff_lower_reward_limit) / reward_span,
@@ -344,6 +350,32 @@ class LeggedRobot(BaseTask):
             self.slow_reward_coeff_lpf_k * target_coeff
         )
         return self.slow_reward_coeff_buf
+
+    def _record_slow_reward_episode_returns(self, env_ids):
+        """Append completed returns to the same 100-episode window used by runner logging."""
+        if not hasattr(self, "episode_return_sums"):
+            return
+        if self.common_step_counter <= 1:
+            self.episode_return_sums[env_ids] = 0.0
+            return
+        completed_returns = self.episode_return_sums[env_ids]
+        history_size = self.slow_reward_episode_returns.numel()
+        if completed_returns.numel() > history_size:
+            completed_returns = completed_returns[-history_size:]
+        count = completed_returns.numel()
+        indices = (
+            self.slow_reward_episode_return_write_index
+            + torch.arange(count, device=self.device)
+        ) % history_size
+        self.slow_reward_episode_returns[indices] = completed_returns
+        self.slow_reward_episode_return_write_index = (
+            self.slow_reward_episode_return_write_index + count
+        ) % history_size
+        self.slow_reward_episode_return_count = min(
+            history_size,
+            self.slow_reward_episode_return_count + count,
+        )
+        self.episode_return_sums[env_ids] = 0.0
     
     def compute_observations(self):
         """ Computes observations
@@ -1405,6 +1437,14 @@ class LeggedRobot(BaseTask):
         self.slow_reward_coeff_buf = torch.tensor(
             float(self.slow_reward_coeff[0]), dtype=torch.float, device=self.device
         )
+        self.episode_return_sums = torch.zeros(
+            self.num_envs, dtype=torch.float, device=self.device, requires_grad=False
+        )
+        self.slow_reward_episode_returns = torch.zeros(
+            100, dtype=torch.float, device=self.device, requires_grad=False
+        )
+        self.slow_reward_episode_return_count = 0
+        self.slow_reward_episode_return_write_index = 0
         self.slow_reward_names = {
             "lin_vel_z",
             "ang_vel_xy",
