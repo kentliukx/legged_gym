@@ -218,6 +218,7 @@ class LeggedRobotCfg(BaseConfig):
             # Shaping rewards
             dof_pos_limits = -5
             flat_orientation_when_flat = -5.0
+            base_height = -10.0
             foot_slippage = -0.2
             foot_clearance = -0.2
             feet_air_time = 1
@@ -252,7 +253,6 @@ class LeggedRobotCfg(BaseConfig):
             orientation = 0
             base_collision = 0
             feet_stumble = 0.0
-            base_height = 0
             symmetry_torque = -0
 
         only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)

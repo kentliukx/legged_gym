@@ -2020,9 +2020,15 @@ class LeggedRobot(BaseTask):
         return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
 
     def _reward_base_height(self):
-        # Penalize base height away from target
-        base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
-        return torch.square(base_height - self.cfg.rewards.base_height_target)
+        """Penalize height error only where the local scan is flat."""
+        if not isinstance(self.measured_heights, torch.Tensor):
+            return torch.zeros(self.num_envs, device=self.device)
+        local_terrain_height = torch.mean(
+            self.measured_heights[:, self._get_flat_height_sample_mask()], dim=1
+        )
+        base_height = self.root_states[:, 2] - local_terrain_height
+        height_error = torch.square(base_height - self.cfg.rewards.base_height_target)
+        return height_error * self._get_flat_terrain_mask()
     
     def _reward_torques(self):
         # Penalize torques
@@ -2081,12 +2087,15 @@ class LeggedRobot(BaseTask):
             return torch.ones(self.num_envs, device=self.device)
         if not isinstance(self.measured_heights, torch.Tensor):
             return torch.ones(self.num_envs, device=self.device)
-        x_coords = self.height_points[0, :, 0]
-        y_coords = self.height_points[0, :, 1]
-        local_mask = (x_coords >= -0.2) & (x_coords <= 0.4) & (torch.abs(y_coords) <= 0.2)
-        selected_heights = self.measured_heights[:, local_mask]
+        selected_heights = self.measured_heights[:, self._get_flat_height_sample_mask()]
         local_height_std = torch.std(selected_heights, dim=1, unbiased=False)
         return (local_height_std < self.cfg.rewards.flat_height_std_threshold).float()
+
+    def _get_flat_height_sample_mask(self):
+        """Return the scan points shared by flat detection and base-height reward."""
+        x_coords = self.height_points[0, :, 0]
+        y_coords = self.height_points[0, :, 1]
+        return (x_coords >= -0.2) & (x_coords <= 0.4) & (torch.abs(y_coords) <= 0.2)
 
     def _get_local_flat_height(self):
         if not self.cfg.terrain.measure_heights:
