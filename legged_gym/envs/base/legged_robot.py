@@ -2328,8 +2328,10 @@ class LeggedRobot(BaseTask):
     def _reward_stand_still_when_reached_goal(self):
         goal_reached, _ = self._get_goal_delta()
         flat_mask = self._get_flat_terrain_mask()
-        desired_dof_pos = self.actions * self.cfg.control.action_scale + self.default_dof_pos
-        return flat_mask * goal_reached * torch.sum(torch.abs(desired_dof_pos - self.default_dof_pos), dim=1)
+        # Penalize the realized pose so gravity/contact compliance cannot evade it.
+        return flat_mask * goal_reached * torch.sum(
+            torch.abs(self.dof_pos - self.default_dof_pos), dim=1
+        )
 
     def _reward_action_smoothness(self):
         return torch.sum(torch.square(self.last_last_actions - 2. * self.last_actions + self.actions), dim=1)
