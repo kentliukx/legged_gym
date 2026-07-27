@@ -119,6 +119,7 @@ class Terrain:
                                       bar_x_scale=(3.0, 1.0),
                                       bar_x_scale_min_level=None,
                                       bar_y_scale=1.0,
+                                      bar_y_scale_random_multiplier=1.0,
                                       bar_y_scale_min_level=None,
                                       bar_y_scale_curve_power=1.0,
                                       platform_length=1.0,
@@ -139,7 +140,7 @@ class Terrain:
         ):
         bar_vertices, bar_triangles = load_stl_mesh(bar_mesh_file)
         side_bar_vertices, side_bar_triangles = load_stl_mesh(side_bar_mesh_file)
-        max_bar_y_scale = _range_max(bar_y_scale)
+        max_bar_y_scale = _range_max(bar_y_scale) * _range_max(bar_y_scale_random_multiplier)
         all_vertices = []
         all_triangles = []
         all_ladder_triangle_masks = []
@@ -175,6 +176,7 @@ class Terrain:
                 row_difficulty = ((i - 1) / (self.cfg.num_rows - 2)
                                   if self.cfg.curriculum and self.cfg.num_rows > 2
                                   else difficulty)
+                tile_bar_y_scale_multiplier = _sample_range(bar_y_scale_random_multiplier)
                 tile_ladder_angle = _lerp_range(ladder_angle, row_difficulty)
                 self.ladder_bar_spacing[i, j] = tile_bar_spacing
                 self.ladder_angles[i, j] = tile_ladder_angle
@@ -191,6 +193,7 @@ class Terrain:
                     bar_x_scale=bar_x_scale,
                     bar_x_scale_min_level=bar_x_scale_min_level,
                     bar_y_scale=bar_y_scale,
+                    bar_y_scale_multiplier=tile_bar_y_scale_multiplier,
                     bar_y_scale_min_level=bar_y_scale_min_level,
                     bar_y_scale_curve_power=bar_y_scale_curve_power,
                     platform_length=platform_length,
@@ -417,6 +420,7 @@ def generate_ladder_bar_mesh(env_length,
                              bar_x_scale=(3.0, 1.0),
                              bar_x_scale_min_level=None,
                              bar_y_scale=1.0,
+                             bar_y_scale_multiplier=1.0,
                              bar_y_scale_min_level=None,
                              bar_y_scale_curve_power=1.0,
                              platform_length=1.0,
@@ -449,6 +453,7 @@ def generate_ladder_bar_mesh(env_length,
         min_value_level=bar_y_scale_min_level,
         curve_power=bar_y_scale_curve_power,
     )
+    bar_y_scale *= float(bar_y_scale_multiplier)
 
     vertices = []
     triangles = []
