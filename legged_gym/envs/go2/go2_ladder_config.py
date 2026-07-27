@@ -38,7 +38,8 @@ class GO2LadderCfg( LeggedRobotCfg ):
         pass
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [-2.0, 0.0, 0.35] # x,y,z [m]
+        # Each coordinate may be a scalar or [min, max], sampled at every reset.
+        pos = [[-2, -1], [-0.2, 0.2], 0.35] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
             "FL_thigh_joint": 0.7, "FL_hip_joint": 0.1, "FL_calf_joint": -1.7,
             "FR_thigh_joint": 0.7, "FR_hip_joint": -0.1, "FR_calf_joint": -1.7,

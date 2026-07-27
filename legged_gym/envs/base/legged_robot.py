@@ -846,6 +846,11 @@ class LeggedRobot(BaseTask):
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
 
+        if hasattr(self, "init_state_pos_lower"):
+            init_pos = self.init_state_pos_lower + torch.rand(
+                len(env_ids), 3, device=self.device
+            ) * (self.init_state_pos_upper - self.init_state_pos_lower)
+            self.root_states[env_ids, :3] += init_pos - self.base_init_state[:3]
         self._randomize_rough_spawn_yaw(env_ids)
         self.base_quat[env_ids] = self.root_states[env_ids, 3:7]
         self.projected_gravity[env_ids] = quat_rotate_inverse(self.base_quat[env_ids], self.gravity_vec[env_ids])
@@ -1610,7 +1615,27 @@ class LeggedRobot(BaseTask):
         for name in self.cfg.asset.terminate_after_contacts_on:
             termination_contact_names.extend([s for s in body_names if name in s])
 
-        base_init_state_list = self.cfg.init_state.pos + self.cfg.init_state.rot + self.cfg.init_state.lin_vel + self.cfg.init_state.ang_vel
+        init_pos_lower = []
+        init_pos_upper = []
+        for coordinate in self.cfg.init_state.pos:
+            if isinstance(coordinate, (list, tuple)):
+                if len(coordinate) != 2:
+                    raise ValueError("init_state.pos ranges must contain [min, max].")
+                lower, upper = float(coordinate[0]), float(coordinate[1])
+            else:
+                lower = upper = float(coordinate)
+            init_pos_lower.append(min(lower, upper))
+            init_pos_upper.append(max(lower, upper))
+        self.init_state_pos_lower = torch.tensor(init_pos_lower, device=self.device)
+        self.init_state_pos_upper = torch.tensor(init_pos_upper, device=self.device)
+        init_pos_center = [
+            0.5 * (lower + upper)
+            for lower, upper in zip(init_pos_lower, init_pos_upper)
+        ]
+        base_init_state_list = (
+            init_pos_center + self.cfg.init_state.rot
+            + self.cfg.init_state.lin_vel + self.cfg.init_state.ang_vel
+        )
         self.base_init_state = to_torch(base_init_state_list, device=self.device, requires_grad=False)
         self.base_added_mass = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
         self.review_episode_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
