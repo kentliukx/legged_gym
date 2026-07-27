@@ -79,6 +79,8 @@ class Terrain:
         )
         self.ladder_angles = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
         self.ladder_bar_y_scales = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
+        # Lateral distance from the ladder centerline to either side-rail center.
+        self.ladder_side_rail_half_width = np.zeros((cfg.num_rows, self.num_cols), dtype=np.float32)
 
         self.obs_horizontal_scale = getattr(cfg, "obs_horizontal_scale", cfg.horizontal_scale)
 
@@ -202,6 +204,9 @@ class Terrain:
                     side_bar_triangles=side_bar_triangles)
                 self.ladder_bar_counts[i, j] = len(bar_centers)
                 self.ladder_bar_y_scales[i, j] = tile_bar_y_scale
+                self.ladder_side_rail_half_width[i, j] = 0.5 * (
+                    np.max(prepared_bar_vertices[:, 1]) - np.min(prepared_bar_vertices[:, 1])
+                )
                 ladder_origin = np.asarray(
                     [self.env_length * 0.5 + ladder_x_offset, self.env_width * 0.5, 0.0],
                     dtype=np.float32,

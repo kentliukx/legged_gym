@@ -222,6 +222,7 @@ class LeggedRobotCfg(BaseConfig):
             base_height = -10.0
             foot_slippage = -0.2
             foot_clearance = -0.2
+            ladder_side_clearance = -0.2
             collision = -1
             # gait related
             feet_air_time = 1
@@ -277,6 +278,7 @@ class LeggedRobotCfg(BaseConfig):
         phase_contact_force_threshold = 20.0
         flat_height_std_threshold = 0.1
         foot_clearance_target = 0.1
+        ladder_side_clearance_threshold = 0.1
         ladder_contact_precision_threshold = 0.03
 
     class normalization:

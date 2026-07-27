@@ -1267,6 +1267,9 @@ class LeggedRobot(BaseTask):
             ).view(self.terrain.obs_tot_rows, self.terrain.obs_tot_cols).to(self.device)
             self.terrain_ladder_angles = torch.from_numpy(self.terrain.ladder_angles).to(self.device).to(torch.float)
             self.terrain_ladder_bar_y_scales = torch.from_numpy(self.terrain.ladder_bar_y_scales).to(self.device).to(torch.float)
+            self.terrain_ladder_side_rail_half_width = torch.from_numpy(
+                self.terrain.ladder_side_rail_half_width
+            ).to(self.device).to(torch.float)
         self.goal_targets = self.terrain_platform_centers[self.terrain_levels, self.terrain_types].clone()
         self.goal_targets[:, 2] += self.cfg.rewards.base_height_target
         self._randomize_rough_targets(torch.arange(self.num_envs, device=self.device))
@@ -2240,6 +2243,24 @@ class LeggedRobot(BaseTask):
         foot_xy_speed = torch.norm(foot_vel[:, :, :2], dim=-1)
         clearance_error = torch.square(self.cfg.rewards.foot_clearance_target - foot_height)
         return torch.sum(clearance_error * foot_xy_speed, dim=1) * self._get_flat_terrain_mask()
+
+    def _reward_ladder_side_clearance(self):
+        """Keep feet inside the ladder rails while they are over the ladder span."""
+        if not hasattr(self, "terrain_ladder_side_rail_half_width"):
+            return torch.zeros(self.num_envs, device=self.device)
+
+        effector_positions = self.rigid_body_states[:, self.distance_effector_indices, :3]
+        ladder_origins = self.terrain_ladder_origins[self.terrain_levels, self.terrain_types]
+        rail_half_width = self.terrain_ladder_side_rail_half_width[
+            self.terrain_levels, self.terrain_types
+        ]
+        lateral_offset = torch.abs(effector_positions[..., 1] - ladder_origins[:, None, 1])
+        inside_clearance = rail_half_width[:, None] - lateral_offset
+        threshold = self.cfg.rewards.ladder_side_clearance_threshold
+        normalized_deficit = torch.clamp(threshold - inside_clearance, min=0.0) / threshold
+        return torch.sum(
+            torch.square(normalized_deficit) * self.effector_on_ladder_plane.float(), dim=1
+        )
 
     def _reward_feet_air_time(self):
         # Reward moderate air time and penalize overly long swing time.
