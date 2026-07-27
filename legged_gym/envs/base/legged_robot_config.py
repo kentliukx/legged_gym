@@ -216,18 +216,21 @@ class LeggedRobotCfg(BaseConfig):
             position_tracking = 3
 
             # Shaping rewards
+            # overall
             dof_pos_limits = -5
             flat_orientation_when_flat = -5.0
             base_height = -10.0
             foot_slippage = -0.2
             foot_clearance = -0.2
+            collision = -1
+            # gait related
             feet_air_time = 1
             feet_ground_time = 1
             ladder_contact_precision = 0.1
             excess_feet_air_time = -5
             contact_symmetry = 0.05
             feet_contact_forces = -0.01
-            collision = -1
+            # reached goal
             stand_still_when_reached_goal = -0.5
             stand_still_contact_when_reached_goal = -0.5
 
