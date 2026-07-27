@@ -1061,6 +1061,11 @@ class LeggedRobot(BaseTask):
         bar_y_scale = self.terrain_ladder_bar_y_scales[self.terrain_levels, self.terrain_types]
         ladder_angle_rad = torch.deg2rad(ladder_angle_deg)
         is_ladder = self.terrain_ladder_mask[self.terrain_levels, self.terrain_types]
+        ladder_origins = self.terrain_ladder_origins[self.terrain_levels, self.terrain_types]
+        base_lateral_offset = self.root_states[:, 1] - ladder_origins[:, 1]
+        base_lateral_offset = torch.where(
+            is_ladder, base_lateral_offset, torch.zeros_like(base_lateral_offset)
+        )
 
         forward = quat_apply(self.base_quat, self.forward_vec)
         base_heading = torch.atan2(forward[:, 1], forward[:, 0])
@@ -1068,10 +1073,10 @@ class LeggedRobot(BaseTask):
         ladder_up_yaw_rel = torch.where(is_ladder, ladder_up_yaw_rel, torch.zeros_like(ladder_up_yaw_rel))
 
         ladder_obs[:, 0] = bar_spacing
-        ladder_obs[:, 1] = bar_spacing * torch.sin(ladder_angle_rad)
-        ladder_obs[:, 2] = bar_spacing * torch.cos(ladder_angle_rad)
-        ladder_obs[:, 3] = ladder_up_yaw_rel
-        ladder_obs[:, 4] = bar_y_scale
+        ladder_obs[:, 1] = bar_y_scale
+        ladder_obs[:, 2] = ladder_angle_rad
+        ladder_obs[:, 3] = base_lateral_offset
+        ladder_obs[:, 4] = ladder_up_yaw_rel
         return ladder_obs
 
     def _update_effector_ladder_distances(self):
