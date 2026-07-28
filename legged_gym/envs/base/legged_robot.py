@@ -231,7 +231,7 @@ class LeggedRobot(BaseTask):
         self.reset_buf[env_ids] = 1
         # fill extras
         self.extras["episode"] = {}
-        self._record_slow_reward_episode_returns(env_ids)
+        self._record_increasing_reward_episode_returns(env_ids)
         for key in self.episode_sums.keys():
             self.extras["episode"]['rew_' + key] = torch.mean(self.episode_sums[key][env_ids]) / self.max_episode_length_s
             self.episode_sums[key][env_ids] = 0.
@@ -314,12 +314,12 @@ class LeggedRobot(BaseTask):
             adds each terms to the episode sums and to the total reward
         """
         self.rew_buf[:] = 0.
-        slow_reward_coeff = self._update_slow_reward_coeff()
+        increasing_reward_coeff = self._update_increasing_reward_coeff()
         for i in range(len(self.reward_functions)):
             name = self.reward_names[i]
             rew = self.reward_functions[i]() * self.reward_scales[name]
-            if name in self.slow_reward_names:
-                rew *= slow_reward_coeff
+            if name in self.increasing_reward_names:
+                rew *= increasing_reward_coeff
             self.rew_buf += rew
             self.episode_sums[name] += rew
         if self.cfg.rewards.only_positive_rewards:
@@ -331,27 +331,27 @@ class LeggedRobot(BaseTask):
             self.episode_sums["termination"] += rew
         self.episode_return_sums += self.rew_buf
 
-    def _update_slow_reward_coeff(self):
-        """Linearly anneal slow-movement penalties from the global mean episode return."""
-        if self.slow_reward_episode_return_count == 0:
-            return self.slow_reward_coeff_buf
-        low, high = self.slow_reward_coeff
+    def _update_increasing_reward_coeff(self):
+        """Linearly increase selected reward coefficients from the global mean episode return."""
+        if self.increasing_reward_episode_return_count == 0:
+            return self.increasing_reward_coeff_buf
+        low, high = self.increasing_reward_coeff
         mean_episode_reward = torch.mean(
-            self.slow_reward_episode_returns[:self.slow_reward_episode_return_count]
+            self.increasing_reward_episode_returns[:self.increasing_reward_episode_return_count]
         )
-        reward_span = self.slow_reward_coeff_upper_reward_limit - self.slow_reward_coeff_lower_reward_limit
+        reward_span = self.increasing_reward_upper_reward_limit - self.increasing_reward_lower_reward_limit
         progress = torch.clamp(
-            (mean_episode_reward - self.slow_reward_coeff_lower_reward_limit) / reward_span,
+            (mean_episode_reward - self.increasing_reward_lower_reward_limit) / reward_span,
             min=0.0,
             max=1.0,
         )
         target_coeff = low + (high - low) * progress
-        self.slow_reward_coeff_buf.mul_(1.0 - self.slow_reward_coeff_lpf_k).add_(
-            self.slow_reward_coeff_lpf_k * target_coeff
+        self.increasing_reward_coeff_buf.mul_(1.0 - self.increasing_reward_lpf_k).add_(
+            self.increasing_reward_lpf_k * target_coeff
         )
-        return self.slow_reward_coeff_buf
+        return self.increasing_reward_coeff_buf
 
-    def _record_slow_reward_episode_returns(self, env_ids):
+    def _record_increasing_reward_episode_returns(self, env_ids):
         """Append completed returns to the same 100-episode window used by runner logging."""
         if not hasattr(self, "episode_return_sums"):
             return
@@ -359,21 +359,21 @@ class LeggedRobot(BaseTask):
             self.episode_return_sums[env_ids] = 0.0
             return
         completed_returns = self.episode_return_sums[env_ids]
-        history_size = self.slow_reward_episode_returns.numel()
+        history_size = self.increasing_reward_episode_returns.numel()
         if completed_returns.numel() > history_size:
             completed_returns = completed_returns[-history_size:]
         count = completed_returns.numel()
         indices = (
-            self.slow_reward_episode_return_write_index
+            self.increasing_reward_episode_return_write_index
             + torch.arange(count, device=self.device)
         ) % history_size
-        self.slow_reward_episode_returns[indices] = completed_returns
-        self.slow_reward_episode_return_write_index = (
-            self.slow_reward_episode_return_write_index + count
+        self.increasing_reward_episode_returns[indices] = completed_returns
+        self.increasing_reward_episode_return_write_index = (
+            self.increasing_reward_episode_return_write_index + count
         ) % history_size
-        self.slow_reward_episode_return_count = min(
+        self.increasing_reward_episode_return_count = min(
             history_size,
-            self.slow_reward_episode_return_count + count,
+            self.increasing_reward_episode_return_count + count,
         )
         self.episode_return_sums[env_ids] = 0.0
     
@@ -1433,40 +1433,32 @@ class LeggedRobot(BaseTask):
             Looks for self._reward_<REWARD_NAME>, where <REWARD_NAME> are names of all non zero reward scales in the cfg.
         """
         # This is a reward-scaling meta parameter, not a reward term.
-        self.slow_reward_coeff = self.reward_scales.pop("slow_reward_coeff", [1.0, 1.0])
-        if len(self.slow_reward_coeff) != 2:
-            raise ValueError("rewards.scales.slow_reward_coeff must contain [low, high].")
-        self.slow_reward_coeff_lower_reward_limit = float(
-            self.reward_scales.pop("slow_reward_coeff_lower_reward_limit", 0.0)
+        self.increasing_reward_coeff = self.reward_scales.pop("increasing_reward_coeff", [1.0, 1.0])
+        if len(self.increasing_reward_coeff) != 2:
+            raise ValueError("rewards.scales.increasing_reward_coeff must contain [low, high].")
+        self.increasing_reward_lower_reward_limit = float(
+            self.reward_scales.pop("increasing_reward_lower_reward_limit", 0.0)
         )
-        self.slow_reward_coeff_upper_reward_limit = float(
-            self.reward_scales.pop("slow_reward_coeff_upper_reward_limit", 1.0)
+        self.increasing_reward_upper_reward_limit = float(
+            self.reward_scales.pop("increasing_reward_upper_reward_limit", 1.0)
         )
-        self.slow_reward_coeff_lpf_k = float(self.reward_scales.pop("slow_reward_coeff_lpf_k", 1.0))
-        if self.slow_reward_coeff_upper_reward_limit <= self.slow_reward_coeff_lower_reward_limit:
-            raise ValueError("slow_reward_coeff_upper_reward_limit must exceed the lower limit.")
-        if not 0.0 <= self.slow_reward_coeff_lpf_k <= 1.0:
-            raise ValueError("slow_reward_coeff_lpf_k must be within [0, 1].")
-        self.slow_reward_coeff_buf = torch.tensor(
-            float(self.slow_reward_coeff[0]), dtype=torch.float, device=self.device
+        self.increasing_reward_lpf_k = float(self.reward_scales.pop("increasing_reward_lpf_k", 1.0))
+        if self.increasing_reward_upper_reward_limit <= self.increasing_reward_lower_reward_limit:
+            raise ValueError("increasing_reward_upper_reward_limit must exceed the lower limit.")
+        if not 0.0 <= self.increasing_reward_lpf_k <= 1.0:
+            raise ValueError("increasing_reward_lpf_k must be within [0, 1].")
+        self.increasing_reward_names = set(self.reward_scales.pop("increasing_reward_names", []))
+        self.increasing_reward_coeff_buf = torch.tensor(
+            float(self.increasing_reward_coeff[0]), dtype=torch.float, device=self.device
         )
         self.episode_return_sums = torch.zeros(
             self.num_envs, dtype=torch.float, device=self.device, requires_grad=False
         )
-        self.slow_reward_episode_returns = torch.zeros(
+        self.increasing_reward_episode_returns = torch.zeros(
             100, dtype=torch.float, device=self.device, requires_grad=False
         )
-        self.slow_reward_episode_return_count = 0
-        self.slow_reward_episode_return_write_index = 0
-        self.slow_reward_names = {
-            "lin_vel_z",
-            "ang_vel_xy",
-            "action_rate",
-            "action_smoothness",
-            "torques",
-            "dof_vel",
-            "dof_acc",
-        }
+        self.increasing_reward_episode_return_count = 0
+        self.increasing_reward_episode_return_write_index = 0
 
         # remove zero scales + multiply non-zero ones by dt
         for key in list(self.reward_scales.keys()):

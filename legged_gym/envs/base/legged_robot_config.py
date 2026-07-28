@@ -212,36 +212,44 @@ class LeggedRobotCfg(BaseConfig):
 
     class rewards:
         class scales:
+            # Fixed rewards
             # Primary task rewards
             alive = 3
             position_tracking = 3
-
-            # Shaping rewards
-            # overall
-            dof_pos_limits = -5
-            flat_orientation_when_flat = -5.0
-            base_height = -10.0
-            foot_slippage = -0.2
-            foot_clearance = -0.2
+            # on ladder
             ladder_side_clearance = -0.2
+            ladder_contact_precision = 0.1
             collision = -1
+            feet_contact_forces = -0.01
             # gait related
             feet_air_time = 1
             feet_ground_time = 1
-            ladder_contact_precision = 0.1
             excess_feet_air_time = -5
             contact_symmetry = 0.05
-            feet_contact_forces = -0.01
+            foot_slippage = -0.2
+            foot_clearance = -0.2
             # reached goal
             stand_still_when_reached_goal = -0.5
             stand_still_contact_when_reached_goal = -0.5
 
-            # Slow movement rewards
-            slow_reward_coeff = [0.5, 1.0]
-            slow_reward_coeff_upper_reward_limit = 50
-            slow_reward_coeff_lower_reward_limit = 0
-            slow_reward_coeff_lpf_k = 0.05
-
+            # Increasing rewards
+            increasing_reward_coeff = [0.5, 1.0]
+            increasing_reward_upper_reward_limit = 50
+            increasing_reward_lower_reward_limit = 0
+            increasing_reward_lpf_k = 0.05
+            increasing_reward_names = [
+                "lin_vel_z",
+                "ang_vel_xy",
+                "action_rate",
+                "action_smoothness",
+                "torques",
+                "dof_vel",
+                "dof_acc",
+                "flat_orientation_when_flat",
+                "base_height",
+                "dof_pos_limits",
+            ]
+            # slow movement
             lin_vel_z = -2
             ang_vel_xy = -0.05
             action_rate = -0.02
@@ -249,6 +257,10 @@ class LeggedRobotCfg(BaseConfig):
             torques = -2e-4
             dof_vel = -5e-4
             dof_acc = -2e-7
+            # natural movement
+            flat_orientation_when_flat = -5.0
+            base_height = -10.0
+            dof_pos_limits = -5
 
             # Unused rewards
             heading_tracking = 0
