@@ -110,9 +110,12 @@ def show_height_comparison(frame_queue, height_shape):
 
 
 def get_student_diagnostics(actor_critic, observations, robot_index):
-    if not hasattr(actor_critic, "estimator") or not hasattr(actor_critic, "reconstructed_terrain_obs"):
+    if (not hasattr(actor_critic, "estimator")
+            or not hasattr(actor_critic, "reconstructed_height_obs")
+            or not hasattr(actor_critic, "reconstructed_ladder_obs")):
         return None
-    if actor_critic.reconstructed_terrain_obs is None:
+    if (actor_critic.reconstructed_height_obs is None
+            or actor_critic.reconstructed_ladder_obs is None):
         return None
 
     split_obs = actor_critic._split_observations(observations)
@@ -129,21 +132,27 @@ def get_student_diagnostics(actor_critic, observations, robot_index):
         (
             split_obs["base_lin_vel"],
             split_obs["foot_contacts"],
+            split_obs["friction"],
+            split_obs["added_mass"],
             split_obs["applied_force"],
             split_obs["applied_torque"],
-            split_obs["friction"],
         ),
         dim=-1,
     )
-    reconstructed_terrain = actor_critic.reconstructed_terrain_obs
-    height_dim = actor_critic.height_dim
     return {
         "estimated": estimated_state[robot_index].detach(),
         "estimated_target": estimated_target[robot_index].detach(),
-        "reconstructed_height": reconstructed_terrain[robot_index, :height_dim].detach(),
+        "reconstructed_height": actor_critic.reconstructed_height_obs[robot_index].detach(),
         "reconstructed_height_target": split_obs["height_scan"][robot_index].detach(),
-        "reconstructed_ladder": reconstructed_terrain[robot_index, height_dim:].detach(),
-        "ladder_target": split_obs["ladder_info"][robot_index].detach(),
+        "reconstructed_ladder": actor_critic.reconstructed_ladder_obs[robot_index].detach(),
+        "ladder_target": torch.cat(
+            (
+                split_obs["effector_ladder_plane_distance"][robot_index],
+                split_obs["effector_nearest_bar_distance"][robot_index],
+                split_obs["ladder_info"][robot_index],
+            ),
+            dim=-1,
+        ).detach(),
     }
 
 
@@ -161,9 +170,10 @@ def print_student_diagnostics(diagnostics, env, robot_index, step):
     print(f"\n[student diagnostics] step={step}")
     print(f"  base_lin_vel   estimated={values(estimated[0:3])} target={values(target[0:3])}")
     print(f"  foot_contacts  estimated={values(estimated[3:7])} target={values(target[3:7])}")
-    print(f"  applied_force  estimated={values(estimated[7:10])} target={values(target[7:10])}")
-    print(f"  applied_torque estimated={values(estimated[10:13])} target={values(target[10:13])}")
-    print(f"  friction       estimated={values(estimated[13:14])} target={values(target[13:14])}")
+    print(f"  friction       estimated={values(estimated[7:8])} target={values(target[7:8])}")
+    print(f"  added_mass     estimated={values(estimated[8:9])} target={values(target[8:9])}")
+    print(f"  applied_force  estimated={values(estimated[9:12])} target={values(target[9:12])}")
+    print(f"  applied_torque estimated={values(estimated[12:15])} target={values(target[12:15])}")
     print(
         f"  ladder_obs     reconstructed={values(diagnostics['reconstructed_ladder'])} "
         f"target={values(diagnostics['ladder_target'])}"

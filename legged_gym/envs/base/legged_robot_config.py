@@ -376,6 +376,9 @@ class LeggedRobotCfgPPO(BaseConfig):
         lam = 0.95
         desired_kl = 0.01
         max_grad_norm = 1.
+        estimator_loss_coef = 1.0
+        ladder_reconstruction_loss_coef = 1.0
+        height_reconstruction_loss_coef = 1.0
     class runner:
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
