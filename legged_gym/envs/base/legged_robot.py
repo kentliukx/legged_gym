@@ -346,6 +346,7 @@ class LeggedRobot(BaseTask):
             max=1.0,
         )
         target_coeff = low + (high - low) * progress
+        target_coeff = torch.maximum(target_coeff, self.increasing_reward_coeff_buf)
         self.increasing_reward_coeff_buf.mul_(1.0 - self.increasing_reward_lpf_k).add_(
             self.increasing_reward_lpf_k * target_coeff
         )
