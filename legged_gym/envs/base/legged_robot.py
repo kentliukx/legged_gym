@@ -384,7 +384,7 @@ class LeggedRobot(BaseTask):
         curr_proprio_clean = self._get_proprioception_obs()
         curr_proprio_noisy = self._add_uniform_noise(
             curr_proprio_clean,
-            self._get_proprioception_noise_scale().unsqueeze(0),
+            self._get_proprioception_noise_scale(),
         )
         self._update_proprioception_history(curr_proprio_noisy)
         proprioception_history = self.proprioception_history_buf.reshape(self.num_envs, -1)
@@ -451,19 +451,67 @@ class LeggedRobot(BaseTask):
 
     def _get_proprioception_noise_scale(self):
         noise_scales = self.cfg.noise.noise_scales
-        noise_level = self.cfg.noise.noise_level
         noise_scale = torch.zeros(3 + 3 + 3 * self.num_actions, dtype=torch.float, device=self.device)
-        noise_scale[0:3] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
-        noise_scale[3:6] = noise_scales.gravity * noise_level
+        noise_scale[0:3] = noise_scales.ang_vel * self.obs_scales.ang_vel
+        noise_scale[3:6] = noise_scales.gravity
         dof_pos_start = 6
         noise_scale[dof_pos_start:dof_pos_start + self.num_actions] = (
-            noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
+            noise_scales.dof_pos * self.obs_scales.dof_pos
         )
         dof_vel_start = dof_pos_start + self.num_actions
         noise_scale[dof_vel_start:dof_vel_start + self.num_actions] = (
-            noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
+            noise_scales.dof_vel * self.obs_scales.dof_vel
         )
-        return noise_scale
+        return noise_scale.unsqueeze(0) * self._get_noise_level()
+
+    def _get_noise_level(self):
+        return self._scale_by_difficulty(
+            getattr(self.cfg.noise, "min_noise_level", self.cfg.noise.noise_level),
+            self.cfg.noise.noise_level,
+            getattr(self.cfg.noise, "difficulty_scale_level_range", [1, self.max_terrain_level]),
+        )
+
+    def get_current_noise_level(self):
+        return self._get_noise_level()
+
+    def get_current_push_level(self):
+        return self._get_push_level("min_push_vel_xy", "max_push_vel_xy")
+
+    def get_current_foot_push_level(self):
+        return self._get_push_level("min_push_foot_vel_xy", "max_push_foot_vel_xy")
+
+    def get_current_mean_terrain_level(self):
+        if not hasattr(self, "ladder_levels"):
+            return 0.0
+        return torch.mean(self.ladder_levels.float())
+
+    def get_current_max_terrain_level(self):
+        if not hasattr(self, "ladder_levels"):
+            return 0.0
+        return torch.max(self.ladder_levels.float())
+
+    def _get_push_level(self, min_name, max_name):
+        max_value = getattr(self.cfg.domain_rand, max_name)
+        return self._scale_by_difficulty(
+            getattr(self.cfg.domain_rand, min_name, max_value),
+            max_value,
+            getattr(self.cfg.domain_rand, "difficulty_scale_level_range", [1, self.max_terrain_level]),
+        )
+
+    def _scale_by_difficulty(self, min_value, max_value, level_range):
+        scale = self._get_mean_terrain_level_scale(level_range)
+        return float(min_value) + scale * (float(max_value) - float(min_value))
+
+    def _get_mean_terrain_level_scale(self, level_range):
+        if not hasattr(self, "ladder_levels"):
+            return 0.0
+        if len(level_range) != 2:
+            raise ValueError("difficulty_scale_level_range must contain [min_level, max_level]")
+        min_level, max_level = map(float, level_range)
+        if not min_level < max_level:
+            raise ValueError("difficulty_scale_level_range must satisfy min_level < max_level")
+        mean_level = torch.mean(self.ladder_levels.float())
+        return torch.clamp((mean_level - min_level) / (max_level - min_level), 0.0, 1.0)
 
     def _add_uniform_noise(self, tensor, noise_scale):
         if not self.add_noise:
@@ -890,8 +938,8 @@ class LeggedRobot(BaseTask):
     def _push_robots(self):
         """ Random pushes the robots. Emulates an impulse by setting a randomized base velocity. 
         """
-        max_vel = self.cfg.domain_rand.max_push_vel_xy
-        self.root_states[:, 7:9] = torch_rand_float(-max_vel, max_vel, (self.num_envs, 2), device=self.device) # lin vel x/y
+        max_vel = self.get_current_push_level()
+        self.root_states[:, 7:9] = torch_rand_float(-1., 1., (self.num_envs, 2), device=self.device) * max_vel
         self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states))
 
     def _push_robot_feet(self):
@@ -899,16 +947,16 @@ class LeggedRobot(BaseTask):
         if len(self.feet_indices) == 0:
             return
         self.gym.refresh_rigid_body_state_tensor(self.sim)
-        max_vel = self.cfg.domain_rand.max_push_foot_vel_xy
+        max_vel = self.get_current_foot_push_level()
         foot_ids = torch.randint(len(self.feet_indices), (self.num_envs,), device=self.device)
         self.foot_push_body_indices[:] = self.feet_indices[foot_ids]
         env_ids = torch.arange(self.num_envs, device=self.device)
         target_vel_xy = torch_rand_float(
-            -max_vel,
-            max_vel,
+            -1.,
+            1.,
             (self.num_envs, 2),
             device=self.device,
-        )
+        ) * max_vel
         current_vel_xy = self.rigid_body_states[env_ids, self.foot_push_body_indices, 7:9]
         body_mass = self.rigid_body_masses[self.foot_push_body_indices].unsqueeze(1)
         self.foot_push_force.zero_()
@@ -2197,7 +2245,7 @@ class LeggedRobot(BaseTask):
         noisy_depth = torch.clamp(
             self._add_uniform_noise(
                 self.depth_image_buf,
-                self.cfg.noise.noise_scales.depth_image * self.cfg.noise.noise_level,
+                self.cfg.noise.noise_scales.depth_image * self._get_noise_level(),
             ),
             min=min_depth,
             max=max_depth,

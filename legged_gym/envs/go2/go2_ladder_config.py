@@ -74,30 +74,7 @@ class GO2LadderCfg( LeggedRobotCfg ):
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
 
     class domain_rand( LeggedRobotCfg.domain_rand):
-        randomize_friction = True
-        friction_range = [-0.5, 1.5]
-
-        randomize_base_mass = True
-        added_mass_range = [-1.0, 2.0]
-
-        randomize_pd_gains = True
-        stiffness_multiplier_range = [0.8, 1.2]
-        damping_multiplier_range = [0.8, 1.2]
-
-        push_robots = True
-        push_interval_s = 2.
-        max_push_vel_xy = 0.5
-
-        push_robot_foot = True
-        push_foot_interval_s = 1.
-        max_push_foot_vel_xy = 5.
-
-        apply_base_force_torque = True
-        base_force_interval_s = 4.
-        base_force_duration_s = 2
-        max_base_force = [10., 10., 10.]
-        max_base_torque = [5., 5., 5.]
-
+        pass
   
     class rewards( LeggedRobotCfg.rewards ):
         pass
@@ -109,4 +86,4 @@ class GO2LadderCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
         policy_class_name = 'StudentActorCritic'
         experiment_name = 'go2_ladder'
-        teacher_checkpoint = 'logs/go2_ladder/Teacher/model_5000.pt'
+        teacher_checkpoint = 'logs/go2_ladder/Teacher/model_15000.pt'

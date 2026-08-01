@@ -181,7 +181,7 @@ class LeggedRobotCfg(BaseConfig):
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
         replace_cylinder_with_capsule = True # replace collision cylinders with capsules, leads to faster/more stable simulation
         flip_visual_attachments = True # Some .obj meshes must be flipped from y-up to z-up
-        
+
         density = 0.001
         angular_damping = 0.
         linear_damping = 0.
@@ -192,23 +192,33 @@ class LeggedRobotCfg(BaseConfig):
 
     class domain_rand:
         randomize_friction = True
-        friction_range = [0.5, 1.25]
+        friction_range = [-0.5, 1.5]
+
         randomize_base_mass = True
-        added_mass_range = [-1., 1.]
+        added_mass_range = [-1.0, 2.0]
+
         randomize_pd_gains = True
-        stiffness_multiplier_range = [1.0, 1.0]
-        damping_multiplier_range = [1.0, 1.0]
-        push_robots = False
-        push_interval_s = 2
-        max_push_vel_xy = 1.
-        push_robot_foot = False
-        push_foot_interval_s = 15.
-        max_push_foot_vel_xy = 1.
+        stiffness_multiplier_range = [0.8, 1.2]
+        damping_multiplier_range = [0.8, 1.2]
+
         apply_base_force_torque = True
-        base_force_interval_s = 15.
-        base_force_duration_s = 0.2
-        max_base_force = [0., 0., 0.]
-        max_base_torque = [0., 0., 0.]
+        base_force_interval_s = 4.
+        base_force_duration_s = 2
+        max_base_force = [10., 10., 10.]
+        max_base_torque = [5., 5., 5.]
+
+        # increase over time
+        difficulty_scale_level_range = [3, 5]
+
+        push_robots = True
+        push_interval_s = 2.
+        min_push_vel_xy = 0.
+        max_push_vel_xy = 0.5
+
+        push_robot_foot = True
+        push_foot_interval_s = 1.
+        min_push_foot_vel_xy = 0.
+        max_push_foot_vel_xy = 5.
 
     class rewards:
         class scales:
@@ -307,7 +317,9 @@ class LeggedRobotCfg(BaseConfig):
 
     class noise:
         add_noise = True
+        min_noise_level = 0.0
         noise_level = 1.0 # scales other values
+        difficulty_scale_level_range = [3, 5]
         class noise_scales:
             dof_pos = 0.01
             dof_vel = 1.5

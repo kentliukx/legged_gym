@@ -294,6 +294,9 @@ def play(args):
     env_cfg.terrain.terrain_kwargs["rough_probability"] = 0.2
     env_cfg.terrain.terrain_kwargs["low_difficulty_probability"] = 0.2
     env_cfg.sim.physx.max_gpu_contact_pairs = 2**20
+    env_cfg.noise.min_noise_level = env_cfg.noise.noise_level
+    env_cfg.domain_rand.min_push_vel_xy = env_cfg.domain_rand.max_push_vel_xy
+    env_cfg.domain_rand.min_push_foot_vel_xy = env_cfg.domain_rand.max_push_foot_vel_xy
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
