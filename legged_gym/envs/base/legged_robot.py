@@ -110,6 +110,9 @@ class LeggedRobot(BaseTask):
             calls self._post_physics_step_callback() for common computations 
             calls self._draw_debug_vis() if needed
         """
+        # Infos are valid for one environment step only. Keeping a previous
+        # reset's episode/time-out data corrupts logging and PPO bootstrapping.
+        self.extras = {}
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
