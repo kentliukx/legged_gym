@@ -541,9 +541,17 @@ class LeggedRobot(BaseTask):
             buckets * 3 + primary_reason,
             minlength=(self.max_terrain_level + 1) * 3,
         ).view(self.max_terrain_level + 1, 3)
+        progress = self._get_ladder_progress(env_ids)
+        progress_sums = torch.zeros(
+            self.max_terrain_level + 1,
+            dtype=progress.dtype,
+            device=self.device,
+        )
+        progress_sums.scatter_add_(0, buckets, progress)
 
         # This is recorded before reset_idx() updates the curriculum/tile.
         self.extras["terrain_termination_reason_counts"] = reason_counts
+        self.extras["terrain_termination_progress_sums"] = progress_sums
 
     def _get_push_level(self, min_name, max_name):
         max_value = getattr(self.cfg.domain_rand, max_name)
