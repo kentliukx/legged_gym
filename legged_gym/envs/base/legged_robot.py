@@ -135,6 +135,7 @@ class LeggedRobot(BaseTask):
         self.check_termination()
         self.compute_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
+        self._record_terrain_termination_stats(env_ids)
         self.reset_idx(env_ids)
         self._update_depth_camera_observations()
         self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
@@ -150,10 +151,12 @@ class LeggedRobot(BaseTask):
     def check_termination(self):
         """ Check if environments need to be reset
         """
-        self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
-        attitude_failure = self.projected_gravity[:, 2] > 0.1
+        self.termination_contact_buf = torch.any(
+            torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1
+        )
+        self.attitude_failure_buf = self.projected_gravity[:, 2] > 0.1
         self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
-        self.reset_buf = self.reset_buf | attitude_failure | self.time_out_buf
+        self.reset_buf = self.termination_contact_buf | self.attitude_failure_buf | self.time_out_buf
 
     def reset_idx(self, env_ids):
         """ Reset some environments.
@@ -492,6 +495,55 @@ class LeggedRobot(BaseTask):
         if not hasattr(self, "ladder_levels"):
             return 0.0
         return torch.max(self.ladder_levels.float())
+
+    def _get_terrain_difficulty_buckets(self, env_ids=None):
+        """Map active tiles to rough=0 and ladder levels=1..max_terrain_level."""
+        if not hasattr(self, "terrain_levels") or not hasattr(self, "max_terrain_level"):
+            return None
+        if env_ids is None:
+            terrain_levels = self.terrain_levels
+            terrain_types = self.terrain_types
+        else:
+            terrain_levels = self.terrain_levels[env_ids]
+            terrain_types = self.terrain_types[env_ids]
+
+        is_ladder = torch.ones_like(terrain_levels, dtype=torch.bool)
+        if hasattr(self, "terrain_ladder_mask"):
+            is_ladder = self.terrain_ladder_mask[terrain_levels, terrain_types]
+        ladder_levels = torch.clamp(terrain_levels, min=1, max=self.max_terrain_level)
+        return torch.where(is_ladder, ladder_levels, torch.zeros_like(ladder_levels))
+
+    def get_current_terrain_distribution(self):
+        """Return active tile counts ordered as rough, L1, ..., Lmax."""
+        buckets = self._get_terrain_difficulty_buckets()
+        if buckets is None:
+            return None
+        return torch.bincount(buckets, minlength=self.max_terrain_level + 1)
+
+    def _record_terrain_termination_stats(self, env_ids):
+        """Attach pre-reset terrain and primary termination statistics to infos."""
+        if len(env_ids) == 0:
+            return
+        buckets = self._get_terrain_difficulty_buckets(env_ids)
+        if buckets is None:
+            return
+
+        contact = self.termination_contact_buf[env_ids]
+        attitude = self.attitude_failure_buf[env_ids]
+        time_out = self.time_out_buf[env_ids]
+
+        # Each ended episode has one primary label. A body contact wins over an
+        # attitude failure, which wins over a simultaneous timeout.
+        primary_reason = torch.full_like(buckets, 2)  # timeout
+        primary_reason[attitude] = 1
+        primary_reason[contact] = 0
+        reason_counts = torch.bincount(
+            buckets * 3 + primary_reason,
+            minlength=(self.max_terrain_level + 1) * 3,
+        ).view(self.max_terrain_level + 1, 3)
+
+        # This is recorded before reset_idx() updates the curriculum/tile.
+        self.extras["terrain_termination_reason_counts"] = reason_counts
 
     def _get_push_level(self, min_name, max_name):
         max_value = getattr(self.cfg.domain_rand, max_name)
