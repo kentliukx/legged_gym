@@ -1446,6 +1446,9 @@ class LeggedRobot(BaseTask):
         self.base_height_buf = torch.zeros(
             self.num_envs, dtype=torch.float, device=self.device, requires_grad=False
         )
+        self.base_height_target_buf = torch.full_like(
+            self.base_height_buf, float(self.cfg.rewards.base_height_target)
+        )
         self.support_height_buf = torch.zeros_like(self.base_height_buf)
         self.curr_climbing_ladder = torch.zeros(
             self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False
@@ -2214,10 +2217,14 @@ class LeggedRobot(BaseTask):
         self.base_height_buf[:] = torch.where(
             self.curr_climbing_ladder, ladder_base_height, support_base_height
         )
+        self.base_height_target_buf.fill_(float(self.cfg.rewards.base_height_target))
+        self.base_height_target_buf[self.curr_climbing_ladder] = float(
+            self.cfg.rewards.ladder_base_height_target
+        )
 
     def _reward_base_height(self):
         """Penalize the error of the base-height buffer."""
-        return torch.square(self.base_height_buf - self.cfg.rewards.base_height_target)
+        return torch.square(self.base_height_buf - self.base_height_target_buf)
     
     def _reward_torques(self):
         # Penalize torques

@@ -200,7 +200,7 @@ def print_base_height_diagnostic(env, robot_index, step):
     curr_climbing_ladder = bool(env.curr_climbing_ladder[robot_index].item())
     print(
         f"[base height] step={step} height={env.base_height_buf[robot_index].item():.4f}m "
-        f"target={env.cfg.rewards.base_height_target:.4f}m "
+        f"target={env.base_height_target_buf[robot_index].item():.4f}m "
         f"curr_climbing_ladder={curr_climbing_ladder}"
     )
 

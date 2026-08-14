@@ -288,6 +288,7 @@ class LeggedRobotCfg(BaseConfig):
         soft_dof_vel_limit = 1.
         soft_torque_limit = 1.
         base_height_target = 0.35
+        ladder_base_height_target = 0.25
         max_contact_force = 150. # forces above this value are penalized
         foot_slip_threshold = 1.0
         half_phase_lower = 0.3
