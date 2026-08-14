@@ -106,7 +106,7 @@ class LeggedRobotCfg(BaseConfig):
             "platform_width": 1.5,
             "platform_gap": 0.1,
             "ladder_x_offset": -1.0,
-            "rough_probability": 0.3,
+            "rough_probability": 0.2,
             "low_difficulty_probability": 0.3,
             "rough_height_range": (-0.04, 0),
             "rough_grid_size": 0.1,
@@ -269,7 +269,7 @@ class LeggedRobotCfg(BaseConfig):
             dof_acc = -2e-7
             # natural movement
             flat_orientation_when_flat = -5.0
-            base_height = -10.0
+            base_height = -20.0
             dof_pos_limits = -5
 
             # Unused rewards
