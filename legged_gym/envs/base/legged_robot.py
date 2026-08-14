@@ -2218,9 +2218,19 @@ class LeggedRobot(BaseTask):
             self.curr_climbing_ladder, ladder_base_height, support_base_height
         )
         self.base_height_target_buf.fill_(float(self.cfg.rewards.base_height_target))
-        self.base_height_target_buf[self.curr_climbing_ladder] = float(
-            self.cfg.rewards.ladder_base_height_target
-        )
+        max_level = max(int(self.max_terrain_level), 1)
+        lowest_target = float(self.cfg.rewards.ladder_base_height_target_lowest)
+        highest_target = float(self.cfg.rewards.ladder_base_height_target_highest)
+        if max_level <= 1:
+            self.base_height_target_buf[self.curr_climbing_ladder] = lowest_target
+        else:
+            ladder_level_progress = (
+                self.terrain_levels[self.curr_climbing_ladder].float() - 1.0
+            ) / float(max_level - 1)
+            ladder_target = lowest_target + (
+                highest_target - lowest_target
+            ) * torch.clamp(ladder_level_progress, 0.0, 1.0)
+            self.base_height_target_buf[self.curr_climbing_ladder] = ladder_target
 
     def _reward_base_height(self):
         """Penalize the error of the base-height buffer."""
