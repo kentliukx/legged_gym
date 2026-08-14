@@ -130,6 +130,7 @@ class LeggedRobot(BaseTask):
         self._update_symmetry_torque_state()
 
         self._post_physics_step_callback()
+        self._update_base_height_buffer()
 
         # compute observations, rewards, resets, ...
         self.check_termination()
@@ -409,8 +410,7 @@ class LeggedRobot(BaseTask):
                     torch.ones_like(self.commands[is_ladder, 0]),
                 )
                 command_obs[is_ladder, 0] = (1. - self.reached_goal[is_ladder, 0]) * ladder_goal_x_sign
-                flat_mask = self._get_flat_terrain_mask() > 0.5
-                command_obs[is_ladder & (~flat_mask), 1] = 0.
+                command_obs[is_ladder & self.curr_climbing_ladder, 1] = 0.
         obs_parts = [
             # goal
             command_obs,
@@ -1443,6 +1443,13 @@ class LeggedRobot(BaseTask):
         if self.cfg.terrain.measure_heights:
             self.height_points = self._init_height_points()
         self.measured_heights = 0
+        self.base_height_buf = torch.zeros(
+            self.num_envs, dtype=torch.float, device=self.device, requires_grad=False
+        )
+        self.support_height_buf = torch.zeros_like(self.base_height_buf)
+        self.curr_climbing_ladder = torch.zeros(
+            self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False
+        )
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
@@ -2156,16 +2163,61 @@ class LeggedRobot(BaseTask):
         # Penalize non flat base orientation
         return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
 
-    def _reward_base_height(self):
-        """Penalize height error only where the local scan is flat."""
-        if not isinstance(self.measured_heights, torch.Tensor):
-            return torch.zeros(self.num_envs, device=self.device)
-        local_terrain_height = torch.mean(
-            self.measured_heights[:, self._get_flat_height_sample_mask()], dim=1
+    def _update_base_height_buffer(self):
+        """Store base height above ground/platform support or the ladder plane."""
+
+        ladder_origins = self.terrain_ladder_origins[self.terrain_levels, self.terrain_types]
+        ladder_angles = torch.deg2rad(
+            self.terrain_ladder_angles[self.terrain_levels, self.terrain_types]
         )
-        base_height = self.root_states[:, 2] - local_terrain_height
-        height_error = torch.square(base_height - self.cfg.rewards.base_height_target)
-        return height_error * self._get_flat_terrain_mask()
+        base_offset_x = self.root_states[:, 0] - ladder_origins[:, 0]
+        base_offset_z = self.root_states[:, 2] - ladder_origins[:, 2]
+        # Positive is the ladder-facing normal above the inclined ladder plane.
+        ladder_base_height = (
+            base_offset_z * torch.cos(ladder_angles)
+            - base_offset_x * torch.sin(ladder_angles)
+        )
+        bar_along_distances = self.terrain_ladder_bar_along_distances[
+            self.terrain_levels, self.terrain_types
+        ]
+        bar_counts = self.terrain_ladder_bar_counts[self.terrain_levels, self.terrain_types]
+        valid_bars = torch.arange(
+            bar_along_distances.shape[1], device=self.device
+        )[None, :] < bar_counts[:, None]
+        last_bar_along = bar_along_distances.masked_fill(
+            ~valid_bars, float("-inf")
+        ).amax(dim=1)
+        last_bar_x = torch.where(
+            bar_counts > 0,
+            ladder_origins[:, 0] + last_bar_along * torch.cos(ladder_angles),
+            ladder_origins[:, 0],
+        )
+        ladder_x_min = torch.minimum(ladder_origins[:, 0], last_bar_x)
+        ladder_x_max = torch.maximum(ladder_origins[:, 0], last_bar_x)
+        self.curr_climbing_ladder[:] = (
+            (bar_counts > 0)
+            & (self.root_states[:, 0] >= ladder_x_min)
+            & (self.root_states[:, 0] <= ladder_x_max)
+        )
+        climbing_direction_x = last_bar_x - ladder_origins[:, 0]
+        past_last_bar = (
+            (bar_counts > 0)
+            & ((self.root_states[:, 0] - last_bar_x) * climbing_direction_x > 0.)
+        )
+        platform_height = self.terrain_platform_centers[
+            self.terrain_levels, self.terrain_types, 2
+        ]
+        self.support_height_buf[:] = torch.where(
+            past_last_bar, platform_height, torch.zeros_like(platform_height)
+        )
+        support_base_height = self.root_states[:, 2] - self.support_height_buf
+        self.base_height_buf[:] = torch.where(
+            self.curr_climbing_ladder, ladder_base_height, support_base_height
+        )
+
+    def _reward_base_height(self):
+        """Penalize the error of the base-height buffer."""
+        return torch.square(self.base_height_buf - self.cfg.rewards.base_height_target)
     
     def _reward_torques(self):
         # Penalize torques
@@ -2218,31 +2270,6 @@ class LeggedRobot(BaseTask):
 
     def _get_goal_delta(self):
         return self.reached_goal[:, 0], self.goal_dist
-
-    def _get_flat_terrain_mask(self):
-        if not self.cfg.terrain.measure_heights:
-            return torch.ones(self.num_envs, device=self.device)
-        if not isinstance(self.measured_heights, torch.Tensor):
-            return torch.ones(self.num_envs, device=self.device)
-        selected_heights = self.measured_heights[:, self._get_flat_height_sample_mask()]
-        local_height_std = torch.std(selected_heights, dim=1, unbiased=False)
-        return (local_height_std < self.cfg.rewards.flat_height_std_threshold).float()
-
-    def _get_flat_height_sample_mask(self):
-        """Return the scan points shared by flat detection and base-height reward."""
-        x_coords = self.height_points[0, :, 0]
-        y_coords = self.height_points[0, :, 1]
-        return (x_coords >= -0.2) & (x_coords <= 0.4) & (torch.abs(y_coords) <= 0.2)
-
-    def _get_local_flat_height(self):
-        if not self.cfg.terrain.measure_heights:
-            return torch.zeros(self.num_envs, device=self.device)
-        if not isinstance(self.measured_heights, torch.Tensor):
-            return torch.zeros(self.num_envs, device=self.device)
-        x_coords = self.height_points[0, :, 0]
-        y_coords = self.height_points[0, :, 1]
-        local_mask = (x_coords >= -0.1) & (x_coords <= 0.5) & (torch.abs(y_coords) <= 0.2)
-        return torch.mean(self.measured_heights[:, local_mask], dim=1)
 
     def _update_difficulty(self, env_ids=None):
         if env_ids is None:
@@ -2334,9 +2361,9 @@ class LeggedRobot(BaseTask):
         goal_dir = self.commands[:, :2] / goal_dist.unsqueeze(1).clamp(min=1e-6)
         velocity_xy = self.base_lin_vel[:, :2]
         velocity_norm = torch.norm(velocity_xy, dim=1).clamp(min=1e-6)
-        flat_mask = self._get_flat_terrain_mask()
+        flat_mask = ~self.curr_climbing_ladder
         speed_limit = torch.where(
-            flat_mask > 0.5,
+            flat_mask,
             torch.full_like(velocity_norm, float(self.cfg.rewards.goal_speed_limit)),
             torch.full_like(velocity_norm, float(self.cfg.rewards.nonflat_goal_speed_limit)),
         )
@@ -2372,11 +2399,11 @@ class LeggedRobot(BaseTask):
         # clearance, weighted by horizontal foot speed.
         foot_pos = self.rigid_body_states[:, self.feet_indices, :3]
         foot_vel = self.rigid_body_states[:, self.feet_indices, 7:10]
-        ground_height = self._get_local_flat_height().unsqueeze(1)
+        ground_height = self.support_height_buf.unsqueeze(1)
         foot_height = foot_pos[:, :, 2] - ground_height
         foot_xy_speed = torch.norm(foot_vel[:, :, :2], dim=-1)
         clearance_error = torch.square(self.cfg.rewards.foot_clearance_target - foot_height)
-        return torch.sum(clearance_error * foot_xy_speed, dim=1) * self._get_flat_terrain_mask()
+        return torch.sum(clearance_error * foot_xy_speed, dim=1) * (~self.curr_climbing_ladder).float()
 
     def _reward_ladder_side_clearance(self):
         """Keep feet inside the ladder rails while they are over the ladder span."""
@@ -2459,7 +2486,7 @@ class LeggedRobot(BaseTask):
             (phase_contact[:, matched_indices["FR"]] == phase_contact[:, matched_indices["RL"]])
         ).float()
         pair_match = torch.stack((fl_rr_match, fr_rl_match), dim=1)
-        return (2.0 * torch.mean(pair_match, dim=1) - 1.0) * self._get_flat_terrain_mask()
+        return (2.0 * torch.mean(pair_match, dim=1) - 1.0) * (~self.curr_climbing_ladder).float()
 
     def _reward_symmetry_torque(self):
         if not hasattr(self, "filtered_symmetry_torque_abs_diff"):
@@ -2475,7 +2502,7 @@ class LeggedRobot(BaseTask):
         
     def _reward_stand_still_when_reached_goal(self):
         goal_reached, _ = self._get_goal_delta()
-        flat_mask = self._get_flat_terrain_mask()
+        flat_mask = (~self.curr_climbing_ladder).float()
         # Penalize the realized pose so gravity/contact compliance cannot evade it.
         return flat_mask * goal_reached * torch.sum(
             torch.abs(self.dof_pos - self.default_dof_pos), dim=1
@@ -2486,7 +2513,7 @@ class LeggedRobot(BaseTask):
 
     def _reward_flat_orientation_when_flat(self):
         goal_reached, _ = self._get_goal_delta()
-        flat_mask = self._get_flat_terrain_mask()
+        flat_mask = (~self.curr_climbing_ladder).float()
         orientation_mask = torch.maximum(flat_mask, goal_reached)
         return orientation_mask * (1. + goal_reached) * torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
 
@@ -2501,4 +2528,4 @@ class LeggedRobot(BaseTask):
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
         return (torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)) \
-            * self._get_flat_terrain_mask()
+            * (~self.curr_climbing_ladder).float()

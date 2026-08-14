@@ -299,7 +299,6 @@ class LeggedRobotCfg(BaseConfig):
         progress_reward_max_difficulty_multiplier = 1.5
         contact_force_threshold = 1.0
         phase_contact_force_threshold = 20.0
-        flat_height_std_threshold = 0.1
         foot_clearance_target = 0.1
         ladder_side_clearance_threshold = 0.1
         ladder_contact_precision_threshold = 0.03

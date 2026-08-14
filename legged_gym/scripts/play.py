@@ -196,6 +196,14 @@ def print_student_diagnostics(diagnostics, env, robot_index, step):
     print(f"  height_scan MSE={height_mse.item():.6f}  ladder MSE={ladder_mse.item():.6f}")
 
 
+def print_base_height_diagnostic(env, robot_index, step):
+    curr_climbing_ladder = bool(env.curr_climbing_ladder[robot_index].item())
+    print(
+        f"[base height] step={step} height={env.base_height_buf[robot_index].item():.4f}m "
+        f"target={env.cfg.rewards.base_height_target:.4f}m "
+        f"curr_climbing_ladder={curr_climbing_ladder}"
+    )
+
 def get_height_visualization_frame(env, robot_index):
     local_points = env.height_points[robot_index]
     world_points = quat_apply_yaw(
@@ -423,6 +431,8 @@ def play(args):
             if (not teacher_mode and PRINT_STUDENT_DIAGNOSTICS
                     and diagnostics is not None and i % diagnostic_print_interval == 0):
                 print_student_diagnostics(diagnostics, env, robot_index, i)
+            if PRINT_BASE_HEIGHT and i % diagnostic_print_interval == 0:
+                print_base_height_diagnostic(env, robot_index, i)
             obs, _, rews, dones, infos = env.step(actions.detach())
             with torch.inference_mode():
                 ppo_runner.alg.actor_critic.reset(dones)
@@ -541,6 +551,7 @@ if __name__ == '__main__':
     VISUALIZE_DEPTH_CAMERA = True
     PLOT_STATES = True
     PRINT_STUDENT_DIAGNOSTICS = True
+    PRINT_BASE_HEIGHT = True
     DIAGNOSTIC_PRINT_INTERVAL_S = 1.0
     VISUALIZE_HEIGHTMAP = False
     VISUALIZE_HEIGHT_COMPARISON = False
