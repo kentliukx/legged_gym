@@ -239,8 +239,8 @@ class LeggedRobotCfg(BaseConfig):
             foot_slippage = -0.2
             foot_clearance = -0.2
             # reached goal
-            stand_still_when_reached_goal = -0.5
-            stand_still_contact_when_reached_goal = -0.5
+            stand_still_when_reached_goal = -0.2
+            stand_still_contact_when_reached_goal = -0.2
 
             # Increasing rewards
             increasing_reward_coeff = [0.5, 1.0]
