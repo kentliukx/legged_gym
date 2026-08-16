@@ -99,7 +99,7 @@ class LeggedRobotCfg(BaseConfig):
             "bar_x_scale": (1.0, 1.0),
             "bar_x_scale_min_level": 5,
             "bar_y_scale": (0.65, 0.65),
-            "bar_y_scale_random_multiplier": (0.9, 1.1),
+            "bar_y_scale_random_multiplier": (0.85, 1.3),
             "bar_y_scale_min_level": 7,
             "bar_y_scale_curve_power": 0.5,
             "platform_length": 2,
