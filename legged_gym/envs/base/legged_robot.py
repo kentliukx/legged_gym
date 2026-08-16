@@ -2395,7 +2395,7 @@ class LeggedRobot(BaseTask):
             float(self.cfg.rewards.progress_reward_max_difficulty_multiplier) - 1.
         )
         progress_reward = min_dist_decrease_speed * heading_gate * progress_reward_multiplier
-        return (1. - goal_reached) * (progress_reward - 1. * dist_increase_speed - 5. * speed_over) + 1.5 * goal_reached
+        return (1. - goal_reached) * (progress_reward - 1. * dist_increase_speed - 5. * speed_over) + 1 * goal_reached
 
     def _reward_heading_tracking(self):
         _, goal_dist = self._get_goal_delta()
