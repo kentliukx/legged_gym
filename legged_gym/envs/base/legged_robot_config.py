@@ -224,8 +224,8 @@ class LeggedRobotCfg(BaseConfig):
         class scales:
             # Fixed rewards
             # Primary task rewards
-            alive = 3
-            position_tracking = 3
+            alive = 2
+            position_tracking = 5
             # on ladder
             ladder_side_clearance = -0.2
             ladder_contact_precision = 0.1
