@@ -2411,6 +2411,11 @@ class LeggedRobot(BaseTask):
         ).view(self.num_envs, len(self.feet_indices), 3)
         return torch.sum(foot_contacts * torch.norm(foot_lin_vel_base[:, :, :2], dim=2), dim=1)
 
+    def _reward_effector_velocity(self):
+        """Penalize total squared world-frame velocity of all four effector centers."""
+        effector_velocity = self.rigid_body_states[:, self.distance_effector_indices, 7:10]
+        return torch.sum(torch.square(effector_velocity), dim=(1, 2))
+
     def _reward_foot_clearance(self):
         # Matches the IsaacLab Go2 term: penalize swing feet away from a target
         # clearance, weighted by horizontal foot speed.

@@ -258,6 +258,7 @@ class LeggedRobotCfg(BaseConfig):
                 "flat_orientation_when_flat",
                 "base_height",
                 "dof_pos_limits",
+                "effector_velocity",
             ]
             # slow movement
             lin_vel_z = -2
@@ -267,6 +268,7 @@ class LeggedRobotCfg(BaseConfig):
             torques = -2e-4
             dof_vel = -5e-4
             dof_acc = -2e-7
+            effector_velocity = -0.05
             # natural movement
             flat_orientation_when_flat = -5.0
             base_height = -20.0
