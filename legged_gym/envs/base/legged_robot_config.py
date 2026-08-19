@@ -268,7 +268,7 @@ class LeggedRobotCfg(BaseConfig):
             torques = -2e-4
             dof_vel = -5e-4
             dof_acc = -2e-7
-            effector_velocity = -0.05
+            effector_velocity = -0.02
             # natural movement
             flat_orientation_when_flat = -5.0
             base_height = -20.0
