@@ -232,6 +232,12 @@ class LeggedRobot(BaseTask):
         self.min_phase_feet_last_ground_time[env_ids] = 0.
         self.phase_foot_contacts[env_ids] = False
         self.last_phase_contacts[env_ids] = False
+        self.phase_feet_liftoff_positions[env_ids] = 0.
+        self.phase_feet_liftoff_valid[env_ids] = False
+        self.phase_feet_liftoff_on_ladder[env_ids] = False
+        self.phase_feet_step_distance[env_ids] = 0.
+        self.phase_feet_step_distance_threshold[env_ids] = self.cfg.rewards.phase_step_length_threshold
+        self.phase_feet_step_distance_highwatermark[env_ids] = 0.
         if hasattr(self, "filtered_symmetry_torque_abs_diff"):
             self.filtered_symmetry_torque_abs_diff[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
@@ -1249,6 +1255,14 @@ class LeggedRobot(BaseTask):
             effector_positions[..., 2] - support_height,
         )
 
+    def _get_current_tile_bar_spacing(self):
+        """Return each environment's configured ladder bar spacing."""
+        if not hasattr(self, "terrain_ladder_bar_spacing"):
+            return torch.zeros(self.num_envs, device=self.device)
+        return self.terrain_ladder_bar_spacing[
+            self.terrain_levels, self.terrain_types
+        ]
+
     def _lerp_cfg_range(self, value_range, difficulty):
         if np.isscalar(value_range):
             return torch.full_like(difficulty, float(value_range))
@@ -1423,6 +1437,30 @@ class LeggedRobot(BaseTask):
         self.min_phase_feet_last_ground_time = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         self.phase_foot_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.last_phase_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
+        self.phase_feet_liftoff_positions = torch.zeros(
+            self.num_envs, len(self.feet_indices), 3, dtype=torch.float,
+            device=self.device, requires_grad=False,
+        )
+        self.phase_feet_liftoff_valid = torch.zeros(
+            self.num_envs, len(self.feet_indices), dtype=torch.bool,
+            device=self.device, requires_grad=False,
+        )
+        self.phase_feet_liftoff_on_ladder = torch.zeros_like(
+            self.phase_feet_liftoff_valid, requires_grad=False
+        )
+        self.phase_feet_step_distance = torch.zeros(
+            self.num_envs, len(self.feet_indices), dtype=torch.float,
+            device=self.device, requires_grad=False,
+        )
+        self.phase_feet_step_distance_threshold = torch.full_like(
+            self.phase_feet_step_distance,
+            float(self.cfg.rewards.phase_step_length_threshold),
+            requires_grad=False,
+        )
+        # Diagnostic-only: track the largest completed phase step in this episode.
+        self.phase_feet_step_distance_highwatermark = torch.zeros_like(
+            self.phase_feet_step_distance, requires_grad=False
+        )
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
@@ -1519,6 +1557,48 @@ class LeggedRobot(BaseTask):
             self.phase_feet_ground_time,
             self.phase_feet_last_ground_time,
         )
+        foot_positions = self.rigid_body_states[:, self.feet_indices, :3]
+        step_distance = torch.norm(
+            foot_positions - self.phase_feet_liftoff_positions, dim=-1
+        )
+        valid_touchdown = self.phase_feet_first_contact & self.phase_feet_liftoff_valid
+        self.phase_feet_step_distance[:] = torch.where(
+            valid_touchdown, step_distance, torch.zeros_like(step_distance)
+        )
+        self.phase_feet_step_distance_threshold.fill_(
+            float(self.cfg.rewards.phase_step_length_threshold)
+        )
+        ladder_step_mask = (
+            valid_touchdown
+            & self.phase_feet_liftoff_on_ladder
+            & self.effector_on_ladder_plane
+        )
+        ladder_step_threshold = (
+            self._get_current_tile_bar_spacing().unsqueeze(1)
+            + float(self.cfg.rewards.phase_step_length_ladder_margin)
+        )
+        self.phase_feet_step_distance_threshold[:] = torch.where(
+            ladder_step_mask,
+            ladder_step_threshold,
+            self.phase_feet_step_distance_threshold,
+        )
+        self.phase_feet_step_distance_highwatermark[:] = torch.maximum(
+            self.phase_feet_step_distance_highwatermark,
+            self.phase_feet_step_distance,
+        )
+        self.phase_feet_liftoff_positions[:] = torch.where(
+            self.phase_feet_first_air.unsqueeze(-1),
+            foot_positions,
+            self.phase_feet_liftoff_positions,
+        )
+        self.phase_feet_liftoff_on_ladder[:] = torch.where(
+            self.phase_feet_first_air,
+            self.effector_on_ladder_plane,
+            self.phase_feet_liftoff_on_ladder,
+        )
+        self.phase_feet_liftoff_valid[self.phase_feet_first_contact] = False
+        self.phase_feet_liftoff_on_ladder[self.phase_feet_first_contact] = False
+        self.phase_feet_liftoff_valid[self.phase_feet_first_air] = True
         self.last_phase_contacts = self.phase_foot_contacts
         self.phase_feet_air_time = current_phase_feet_air_time * (~self.phase_foot_contacts).float()
         self.phase_feet_ground_time = current_phase_feet_ground_time * self.phase_foot_contacts.float()
@@ -2486,6 +2566,14 @@ class LeggedRobot(BaseTask):
         exceeds_limit = (effective_phase_air_time > self.cfg.rewards.half_phase_upper) & (~phase_contact)
         rew_excess_air_time = torch.sum(exceeds_limit.float(), dim=1)
         return rew_excess_air_time
+
+    def _reward_excess_step_length(self):
+        """Penalize a foot only on phase touchdown when its last step was too long."""
+        excess_distance = torch.clamp(
+            self.phase_feet_step_distance - self.phase_feet_step_distance_threshold,
+            min=0.,
+        )
+        return torch.sum(excess_distance, dim=1)
 
     def _reward_contact_symmetry(self):
         required_feet = ("FL", "FR", "RL", "RR")

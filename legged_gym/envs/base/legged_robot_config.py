@@ -231,6 +231,7 @@ class LeggedRobotCfg(BaseConfig):
             ladder_contact_precision = 0.1
             collision = -1
             feet_contact_forces = -0.01
+            excess_step_length = -5
             # gait related
             feet_air_time = 1
             feet_ground_time = 1
@@ -296,6 +297,8 @@ class LeggedRobotCfg(BaseConfig):
         foot_slip_threshold = 1.0
         half_phase_lower = 0.3
         half_phase_upper = 0.6
+        phase_step_length_threshold = 0.25
+        phase_step_length_ladder_margin = 0.05
         symmetry_torque_lpf_tau = 0.2
         goal_radius = 0.15
         goal_speed_limit = 0.5

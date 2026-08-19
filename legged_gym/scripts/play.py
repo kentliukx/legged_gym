@@ -204,6 +204,35 @@ def print_base_height_diagnostic(env, robot_index, step):
         f"curr_climbing_ladder={curr_climbing_ladder}"
     )
 
+
+def print_step_distance_highwatermark(env, robot_index, step):
+    if not hasattr(env, "phase_feet_step_distance_highwatermark"):
+        return
+
+    foot_names = []
+    foot_indices = []
+    for leg_prefix in ("FL", "FR", "RL", "RR"):
+        foot_name = next(
+            (name for name in env.foot_name_to_obs_index if name.startswith(leg_prefix)),
+            None,
+        )
+        if foot_name is None:
+            return
+        foot_names.append(foot_name)
+        foot_indices.append(env.foot_name_to_obs_index[foot_name])
+
+    highwatermark = env.phase_feet_step_distance_highwatermark[
+        robot_index, foot_indices
+    ]
+    foot_values = " ".join(
+        f"{foot_name}={value.item():.4f}m"
+        for foot_name, value in zip(foot_names, highwatermark)
+    )
+    print(
+        f"[phase-step HWM] step={step} {foot_values}"
+    )
+
+
 def get_height_visualization_frame(env, robot_index):
     local_points = env.height_points[robot_index]
     world_points = quat_apply_yaw(
@@ -299,8 +328,8 @@ def play(args):
     env_cfg.env.num_envs = 1
     env_cfg.env.debug_terrain_sampling = True
     env_cfg.terrain.border_size = 5
-    env_cfg.terrain.terrain_kwargs["rough_probability"] = 0.2
-    env_cfg.terrain.terrain_kwargs["low_difficulty_probability"] = 0.2
+    env_cfg.terrain.terrain_kwargs["rough_probability"] = 0
+    env_cfg.terrain.terrain_kwargs["low_difficulty_probability"] = 0
     env_cfg.sim.physx.max_gpu_contact_pairs = 2**20
     env_cfg.noise.min_noise_level = env_cfg.noise.noise_level
     env_cfg.domain_rand.min_push_vel_xy = env_cfg.domain_rand.max_push_vel_xy
@@ -360,6 +389,9 @@ def play(args):
     frame_wall_time = time.perf_counter()
     diagnostics = None
     diagnostic_print_interval = max(1, int(round(DIAGNOSTIC_PRINT_INTERVAL_S / env.dt)))
+    step_distance_print_interval = max(
+        1, int(round(DIAGNOSTIC_PRINT_INTERVAL_S / env.dt))
+    )
     reconstructed_height_geometry = gymutil.WireframeSphereGeometry(
         0.025,
         4,
@@ -436,6 +468,9 @@ def play(args):
             obs, _, rews, dones, infos = env.step(actions.detach())
             with torch.inference_mode():
                 ppo_runner.alg.actor_critic.reset(dones)
+            if (PRINT_STEP_DISTANCE_HWM
+                    and (i + 1) % step_distance_print_interval == 0):
+                print_step_distance_highwatermark(env, robot_index, i + 1)
             depth_camera_updated = env.depth_image_delivered_this_step
             if (not teacher_mode and VISUALIZE_HEIGHTMAP
                     and diagnostics is not None
@@ -552,6 +587,7 @@ if __name__ == '__main__':
     PLOT_STATES = True
     PRINT_STUDENT_DIAGNOSTICS = True
     PRINT_BASE_HEIGHT = True
+    PRINT_STEP_DISTANCE_HWM = True
     DIAGNOSTIC_PRINT_INTERVAL_S = 1.0
     VISUALIZE_HEIGHTMAP = False
     VISUALIZE_HEIGHT_COMPARISON = False
