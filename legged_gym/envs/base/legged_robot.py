@@ -196,8 +196,13 @@ class LeggedRobot(BaseTask):
             self._reset_goal_progress(env_ids)
 
         # reset buffers
+        # `compute_observations()` runs in this same control step.  Clear the
+        # action that caused the terminal state as well as its history, or the
+        # first observation of the new episode contains the previous fall.
+        self.actions[env_ids] = 0.
         self.last_actions[env_ids] = 0.
         self.last_last_actions[env_ids] = 0.
+        self.torques[env_ids] = 0.
         if hasattr(self, "action_delay_buffer"):
             self.action_delay_buffer[:, env_ids] = 0.
             if self.max_action_delay > 0:
@@ -211,7 +216,42 @@ class LeggedRobot(BaseTask):
             else:
                 self.action_delay_steps[env_ids] = 0
         self.last_dof_vel[env_ids] = 0.
+        self.last_root_vel[env_ids] = self.root_states[env_ids, 7:13]
+        self.base_lin_vel[env_ids] = quat_rotate_inverse(
+            self.base_quat[env_ids], self.root_states[env_ids, 7:10]
+        )
+        self.base_ang_vel[env_ids] = quat_rotate_inverse(
+            self.base_quat[env_ids], self.root_states[env_ids, 10:13]
+        )
         self.proprioception_history_reset_buf[env_ids] = True
+
+        # Do not leak a failed episode's disturbance state into the new one.
+        self.base_force_local[env_ids] = 0.
+        self.base_torque_local[env_ids] = 0.
+        self.foot_push_force[env_ids] = 0.
+        self.foot_push_body_indices[env_ids] = 0
+
+        # Camera frames are asynchronous.  A reset can otherwise deliver a
+        # delayed image from the terrain where the robot just failed.  Fill
+        # only the reset environments with the configured invalid-depth value;
+        # other environments keep their pending latency frames intact.
+        if self.cfg.sensor.enable_depth_camera:
+            invalid_depth = float(self.cfg.sensor.depth_max)
+            self.depth_image_buf[env_ids] = invalid_depth
+            self.depth_image_noisy_buf[env_ids] = invalid_depth
+            self.depth_image_latency_buf[:, env_ids] = invalid_depth
+            if hasattr(self, "depth_camera_ladder_hits"):
+                self.depth_camera_ladder_hits[env_ids] = False
+
+        # These quantities depend on rigid-body/contact tensors, which are
+        # refreshed on the next physics step after resetting root/DOF states.
+        # Zero them instead of exposing the terminal state's values meanwhile.
+        self.effector_ladder_plane_distance[env_ids] = 0.
+        self.effector_nearest_bar_distance[env_ids] = 0.
+        self.effector_on_ladder_plane[env_ids] = False
+        self.base_height_buf[env_ids] = 0.
+        self.support_height_buf[env_ids] = 0.
+        self.curr_climbing_ladder[env_ids] = False
         self.feet_air_time[env_ids] = 0.
         self.feet_first_contact[env_ids] = False
         self.feet_last_air_time[env_ids] = 0.
