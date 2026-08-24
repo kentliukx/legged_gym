@@ -2354,7 +2354,7 @@ class LeggedRobot(BaseTask):
 
     def _reward_base_height(self):
         """Penalize the error of the base-height buffer."""
-        return torch.square(self.base_height_buf - self.base_height_target_buf)
+        return torch.square(self.base_height_buf - self.base_height_target_buf) * (~self.curr_climbing_ladder).float()
     
     def _reward_torques(self):
         # Penalize torques
