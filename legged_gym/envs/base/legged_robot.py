@@ -249,6 +249,9 @@ class LeggedRobot(BaseTask):
         self.effector_ladder_plane_distance[env_ids] = 0.
         self.effector_nearest_bar_distance[env_ids] = 0.
         self.effector_on_ladder_plane[env_ids] = False
+        self.contact_effector_ladder_plane_distance[env_ids] = 0.
+        self.contact_effector_nearest_bar_distance[env_ids] = 0.
+        self.contact_effector_on_ladder_plane[env_ids] = False
         self.base_height_buf[env_ids] = 0.
         self.support_height_buf[env_ids] = 0.
         self.curr_climbing_ladder[env_ids] = False
@@ -1238,29 +1241,28 @@ class LeggedRobot(BaseTask):
         return ladder_obs
 
     def _update_effector_ladder_distances(self):
-        """Update effector distances in the ladder-plane coordinate frame.
+        """Update center and contact-effector distances to the rung centerline.
 
-        A foot is on the ladder only when its world x lies between the ladder
-        ground intersection and its topmost rung. Else, plane distance means
-        world-z height above the ground/platform support map.
+        The existing ``effector_*`` buffers describe ``*_effector_center`` and
+        remain the Student reconstruction targets.  The matching
+        ``contact_effector_*`` buffers describe the physical ``*_effector``
+        links and are used only by the precision reward.
         """
         self.effector_ladder_plane_distance.zero_()
         self.effector_nearest_bar_distance.zero_()
         self.effector_on_ladder_plane.zero_()
+        self.contact_effector_ladder_plane_distance.zero_()
+        self.contact_effector_nearest_bar_distance.zero_()
+        self.contact_effector_on_ladder_plane.zero_()
         if not hasattr(self, "terrain_ladder_bar_along_distances"):
             return
 
-        effector_positions = self.rigid_body_states[:, self.distance_effector_indices, :3]
         ladder_origins = self.terrain_ladder_origins[self.terrain_levels, self.terrain_types]
         ladder_angles = torch.deg2rad(
             self.terrain_ladder_angles[self.terrain_levels, self.terrain_types]
         )
-        offset_x = effector_positions[..., 0] - ladder_origins[:, None, 0]
-        offset_z = effector_positions[..., 2] - ladder_origins[:, None, 2]
         cos_angle = torch.cos(ladder_angles)[:, None]
         sin_angle = torch.sin(ladder_angles)[:, None]
-
-        along_ladder = offset_x * cos_angle + offset_z * sin_angle
         bar_along_distances = self.terrain_ladder_bar_along_distances[
             self.terrain_levels, self.terrain_types
         ]
@@ -1272,28 +1274,46 @@ class LeggedRobot(BaseTask):
         top_bar_x = ladder_origins[:, 0] + top_bar_along * cos_angle[:, 0]
         ladder_x_min = torch.minimum(ladder_origins[:, 0], top_bar_x)
         ladder_x_max = torch.maximum(ladder_origins[:, 0], top_bar_x)
-        on_ladder_plane = (
-            (bar_counts[:, None] > 0)
-            & (effector_positions[..., 0] >= ladder_x_min[:, None])
-            & (effector_positions[..., 0] <= ladder_x_max[:, None])
-        )
-        self.effector_on_ladder_plane[:] = on_ladder_plane
-        nearest_bar_distance = torch.abs(
-            along_ladder[:, :, None] - bar_along_distances[:, None, :]
-        ).masked_fill(~valid_bars[:, None, :], float("inf")).amin(dim=2)
-        support_height = self._sample_height_map_at_world_points(
-            effector_positions, self.support_height_samples
-        )
-        self.effector_nearest_bar_distance[:] = torch.where(
-            on_ladder_plane,
-            nearest_bar_distance,
-            torch.zeros_like(nearest_bar_distance),
-        )
-        self.effector_ladder_plane_distance[:] = torch.where(
-            on_ladder_plane,
-            offset_x * sin_angle - offset_z * cos_angle,
-            effector_positions[..., 2] - support_height,
-        )
+
+        def rung_centerline_distances(positions):
+            offset_x = positions[..., 0] - ladder_origins[:, None, 0]
+            offset_z = positions[..., 2] - ladder_origins[:, None, 2]
+            along_ladder = offset_x * cos_angle + offset_z * sin_angle
+            on_ladder_plane = (
+                (bar_counts[:, None] > 0)
+                & (positions[..., 0] >= ladder_x_min[:, None])
+                & (positions[..., 0] <= ladder_x_max[:, None])
+            )
+            nearest_bar_distance = torch.abs(
+                along_ladder[:, :, None] - bar_along_distances[:, None, :]
+            ).masked_fill(~valid_bars[:, None, :], float("inf")).amin(dim=2)
+            support_height = self._sample_height_map_at_world_points(
+                positions, self.support_height_samples
+            )
+            plane_distance = torch.where(
+                on_ladder_plane,
+                offset_x * sin_angle - offset_z * cos_angle,
+                positions[..., 2] - support_height,
+            )
+            nearest_bar_distance = torch.where(
+                on_ladder_plane,
+                nearest_bar_distance,
+                torch.zeros_like(nearest_bar_distance),
+            )
+            return plane_distance, nearest_bar_distance, on_ladder_plane
+
+        center_positions = self.rigid_body_states[:, self.distance_effector_indices, :3]
+        (
+            self.effector_ladder_plane_distance[:],
+            self.effector_nearest_bar_distance[:],
+            self.effector_on_ladder_plane[:],
+        ) = rung_centerline_distances(center_positions)
+        contact_positions = self.rigid_body_states[:, self.feet_indices, :3]
+        (
+            self.contact_effector_ladder_plane_distance[:],
+            self.contact_effector_nearest_bar_distance[:],
+            self.contact_effector_on_ladder_plane[:],
+        ) = rung_centerline_distances(contact_positions)
 
     def _get_current_tile_bar_spacing(self):
         """Return each environment's configured ladder bar spacing."""
@@ -1465,6 +1485,15 @@ class LeggedRobot(BaseTask):
         self.effector_nearest_bar_distance = torch.zeros_like(self.effector_ladder_plane_distance)
         self.effector_on_ladder_plane = torch.zeros(
             self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False
+        )
+        self.contact_effector_ladder_plane_distance = torch.zeros_like(
+            self.effector_ladder_plane_distance
+        )
+        self.contact_effector_nearest_bar_distance = torch.zeros_like(
+            self.effector_ladder_plane_distance
+        )
+        self.contact_effector_on_ladder_plane = torch.zeros_like(
+            self.effector_on_ladder_plane
         )
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.phase_feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
@@ -2584,21 +2613,35 @@ class LeggedRobot(BaseTask):
         rew_ground_time *= (1. - goal_reached)
         return rew_ground_time
 
-    def _reward_ladder_contact_precision(self):
-        """Reward contacts within a circular tolerance around a rung center."""
-        distance_threshold = self.cfg.rewards.ladder_contact_precision_threshold
-        squared_alignment_distance = (
+    def _get_ladder_contact_precision_mask(self):
+        """Return feet whose contacts satisfy both rung-centerline tolerances."""
+        center_squared_distance = (
             torch.square(self.effector_ladder_plane_distance)
             + torch.square(self.effector_nearest_bar_distance)
         )
-        aligned_contact = (
+        contact_effector_squared_distance = (
+            torch.square(self.contact_effector_ladder_plane_distance)
+            + torch.square(self.contact_effector_nearest_bar_distance)
+        )
+        center_threshold = torch.as_tensor(
+            self.cfg.rewards.ladder_contact_precision_center_threshold,
+            device=self.device,
+        )
+        contact_effector_threshold = torch.as_tensor(
+            self.cfg.rewards.ladder_contact_precision_effector_threshold,
+            device=self.device,
+        )
+        return (
             self._get_foot_contacts()
             & self.effector_on_ladder_plane
-            & (squared_alignment_distance < torch.square(
-                torch.as_tensor(distance_threshold, device=self.device)
-            ))
+            & self.contact_effector_on_ladder_plane
+            & (center_squared_distance < torch.square(center_threshold))
+            & (contact_effector_squared_distance < torch.square(contact_effector_threshold))
         )
-        return torch.sum(aligned_contact.float(), dim=1)
+
+    def _reward_ladder_contact_precision(self):
+        """Reward contacts whose center and physical effector align to a rung."""
+        return torch.sum(self._get_ladder_contact_precision_mask().float(), dim=1)
 
     def _reward_excess_feet_air_time(self):
         phase_contact = self._get_phase_foot_contacts()

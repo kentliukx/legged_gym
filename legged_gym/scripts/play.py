@@ -233,6 +233,39 @@ def print_step_distance_highwatermark(env, robot_index, step):
     )
 
 
+def update_ladder_contact_precision_stats(env, robot_index, totals):
+    """Accumulate physical ladder contacts and the subset rewarded as precise."""
+    ladder_contacts = (
+        env._get_foot_contacts()[robot_index]
+        & env.contact_effector_on_ladder_plane[robot_index]
+    )
+    precise_contacts = env._get_ladder_contact_precision_mask()[robot_index]
+    nonprecise_contacts = ladder_contacts & ~precise_contacts
+    totals["ladder"] += int(ladder_contacts.sum().item())
+    totals["precise"] += int(precise_contacts.sum().item())
+    foot_names = list(env.foot_name_to_obs_index)
+    for foot_index in torch.nonzero(nonprecise_contacts, as_tuple=False).flatten().cpu().tolist():
+        totals["nonprecise_feet"].add(foot_names[foot_index])
+
+
+def print_ladder_contact_precision_stats(totals, step):
+    ladder_contacts = totals["ladder"]
+    precise_contacts = totals["precise"]
+    ratio = 100.0 * precise_contacts / ladder_contacts if ladder_contacts else 0.0
+    nonprecise_feet = [
+        foot_name for foot_name in totals["foot_order"]
+        if foot_name in totals["nonprecise_feet"]
+    ]
+    print(
+        f"[ladder contact precision] step={step} "
+        f"interval precise={precise_contacts}/{ladder_contacts} ({ratio:.1f}%) "
+        f"nonprecise_feet={nonprecise_feet}"
+    )
+    totals["ladder"] = 0
+    totals["precise"] = 0
+    totals["nonprecise_feet"].clear()
+
+
 def get_height_visualization_frame(env, robot_index):
     local_points = env.height_points[robot_index]
     world_points = quat_apply_yaw(
@@ -392,6 +425,13 @@ def play(args):
     step_distance_print_interval = max(
         1, int(round(DIAGNOSTIC_PRINT_INTERVAL_S / env.dt))
     )
+    precision_stats_print_interval = diagnostic_print_interval
+    ladder_contact_precision_totals = {
+        "ladder": 0,
+        "precise": 0,
+        "nonprecise_feet": set(),
+        "foot_order": list(env.foot_name_to_obs_index),
+    }
     reconstructed_height_geometry = gymutil.WireframeSphereGeometry(
         0.025,
         4,
@@ -468,6 +508,14 @@ def play(args):
             obs, _, rews, dones, infos = env.step(actions.detach())
             with torch.inference_mode():
                 ppo_runner.alg.actor_critic.reset(dones)
+            if PRINT_LADDER_CONTACT_PRECISION_STATS:
+                update_ladder_contact_precision_stats(
+                    env, robot_index, ladder_contact_precision_totals
+                )
+                if (i + 1) % precision_stats_print_interval == 0:
+                    print_ladder_contact_precision_stats(
+                        ladder_contact_precision_totals, i + 1
+                    )
             if (PRINT_STEP_DISTANCE_HWM
                     and (i + 1) % step_distance_print_interval == 0):
                 print_step_distance_highwatermark(env, robot_index, i + 1)
@@ -580,17 +628,18 @@ def play(args):
             height_process.join(timeout=1.0)
 
 if __name__ == '__main__':
-    EXPORT_POLICY = True
+    EXPORT_POLICY = False
     RECORD_FRAMES = False
     MOVE_CAMERA = False
-    VISUALIZE_DEPTH_CAMERA = True
-    PLOT_STATES = True
-    PRINT_STUDENT_DIAGNOSTICS = True
-    PRINT_BASE_HEIGHT = True
-    PRINT_STEP_DISTANCE_HWM = True
-    DIAGNOSTIC_PRINT_INTERVAL_S = 1.0
+    VISUALIZE_DEPTH_CAMERA = False
+    PLOT_STATES = False
+    PRINT_STUDENT_DIAGNOSTICS = False
+    PRINT_BASE_HEIGHT = False
+    PRINT_STEP_DISTANCE_HWM = False
+    PRINT_LADDER_CONTACT_PRECISION_STATS = False
     VISUALIZE_HEIGHTMAP = False
     VISUALIZE_HEIGHT_COMPARISON = False
-    VISUALIZE_EFFECTOR_LADDER_DISTANCES = True
+    VISUALIZE_EFFECTOR_LADDER_DISTANCES = False
+    DIAGNOSTIC_PRINT_INTERVAL_S = 1.0
     args = get_args()
     play(args)

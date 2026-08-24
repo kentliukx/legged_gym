@@ -308,7 +308,8 @@ class LeggedRobotCfg(BaseConfig):
         phase_contact_force_threshold = 20.0
         foot_clearance_target = 0.1
         ladder_side_clearance_threshold = 0.1
-        ladder_contact_precision_threshold = 0.03
+        ladder_contact_precision_center_threshold = 0.02
+        ladder_contact_precision_effector_threshold = 0.04
 
     class normalization:
         class obs_scales:
