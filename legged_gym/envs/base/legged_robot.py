@@ -252,6 +252,8 @@ class LeggedRobot(BaseTask):
         self.contact_effector_ladder_plane_distance[env_ids] = 0.
         self.contact_effector_nearest_bar_distance[env_ids] = 0.
         self.contact_effector_on_ladder_plane[env_ids] = False
+        self.contact_precision_clean[env_ids] = 0.
+        self.contact_precision_noisy[env_ids] = 0.
         self.base_height_buf[env_ids] = 0.
         self.support_height_buf[env_ids] = 0.
         self.curr_climbing_ladder[env_ids] = False
@@ -444,7 +446,7 @@ class LeggedRobot(BaseTask):
         )
         self._update_proprioception_history(curr_proprio_noisy)
         proprioception_history = self.proprioception_history_buf.reshape(self.num_envs, -1)
-        foot_contact = self._get_foot_contacts().float()
+        contact_precision = self._get_contact_precision_observation()
         height_scan = torch.clip(
                 self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1) * self.obs_scales.height_measurements
         ladder_obs = self._get_ladder_observations()
@@ -473,7 +475,7 @@ class LeggedRobot(BaseTask):
 
             # privileged information to be reconstructed
             self.base_lin_vel * self.obs_scales.lin_vel,
-            foot_contact,
+            contact_precision,
             self.friction_coeffs,
             self.base_added_mass,
             self.base_force_local * self.obs_scales.applied_wrench,
@@ -1479,6 +1481,11 @@ class LeggedRobot(BaseTask):
         self.feet_last_ground_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.min_feet_last_ground_time = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
         self.foot_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
+        self.contact_precision_clean = torch.zeros(
+            self.num_envs, len(self.feet_indices), dtype=torch.float,
+            device=self.device, requires_grad=False,
+        )
+        self.contact_precision_noisy = torch.zeros_like(self.contact_precision_clean)
         self.effector_ladder_plane_distance = torch.zeros(
             self.num_envs, len(self.feet_indices), dtype=torch.float, device=self.device, requires_grad=False
         )
@@ -2462,6 +2469,23 @@ class LeggedRobot(BaseTask):
 
     def _get_phase_foot_contacts(self):
         return self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.phase_contact_force_threshold
+
+    def _get_contact_precision_observation(self):
+        """Return clean Teacher precision or difficulty-noised Student precision."""
+        self.contact_precision_clean.copy_(self._get_ladder_contact_precision_mask().float())
+        if not self.cfg.env.use_noisy_contact_precision or not self.add_noise:
+            self.contact_precision_noisy.copy_(self.contact_precision_clean)
+            return self.contact_precision_clean
+
+        max_probability = float(self.cfg.noise.noise_scales.contact_precision_flip_prob)
+        if not 0.0 <= max_probability <= 1.0:
+            raise ValueError("contact_precision_flip_prob must lie in [0, 1]")
+        flip_probability = max_probability * self._get_noise_level()
+        flips = torch.rand_like(self.contact_precision_clean) < flip_probability
+        self.contact_precision_noisy.copy_(
+            torch.where(flips, 1.0 - self.contact_precision_clean, self.contact_precision_clean)
+        )
+        return self.contact_precision_noisy
 
     def _update_depth_camera_observations(self):
         self.depth_image_delivered_this_step = False

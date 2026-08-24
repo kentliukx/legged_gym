@@ -120,18 +120,9 @@ def get_student_diagnostics(actor_critic, observations, robot_index):
 
     split_obs = actor_critic._split_observations(observations)
     estimator_raw = actor_critic.estimator(actor_critic._encode_history(split_obs["proprio_history"]))
-    estimated_state = torch.cat(
-        (
-            estimator_raw[..., :3],
-            torch.sigmoid(estimator_raw[..., 3:7]),
-            estimator_raw[..., 7:14],
-        ),
-        dim=-1,
-    )
     estimated_target = torch.cat(
         (
             split_obs["base_lin_vel"],
-            split_obs["foot_contacts"],
             split_obs["friction"],
             split_obs["added_mass"],
             split_obs["applied_force"],
@@ -140,8 +131,9 @@ def get_student_diagnostics(actor_critic, observations, robot_index):
         dim=-1,
     )
     return {
-        "estimated": estimated_state[robot_index].detach(),
+        "estimated": estimator_raw[robot_index].detach(),
         "estimated_target": estimated_target[robot_index].detach(),
+        "contact_precision": split_obs["contact_precision"][robot_index].detach(),
         "reconstructed_height": actor_critic.reconstructed_height_obs[robot_index].detach(),
         "reconstructed_height_target": split_obs["height_scan"][robot_index].detach(),
         "reconstructed_ladder": actor_critic.reconstructed_ladder_obs[robot_index].detach(),
@@ -169,11 +161,11 @@ def print_student_diagnostics(diagnostics, env, robot_index, step):
     target = diagnostics["estimated_target"]
     print(f"\n[student diagnostics] step={step}")
     print(f"  base_lin_vel   estimated={values(estimated[0:3])} target={values(target[0:3])}")
-    print(f"  foot_contacts  estimated={values(estimated[3:7])} target={values(target[3:7])}")
-    print(f"  friction       estimated={values(estimated[7:8])} target={values(target[7:8])}")
-    print(f"  added_mass     estimated={values(estimated[8:9])} target={values(target[8:9])}")
-    print(f"  applied_force  estimated={values(estimated[9:12])} target={values(target[9:12])}")
-    print(f"  applied_torque estimated={values(estimated[12:15])} target={values(target[12:15])}")
+    print(f"  contact_precision noisy_input={values(diagnostics['contact_precision'])}")
+    print(f"  friction       estimated={values(estimated[3:4])} target={values(target[3:4])}")
+    print(f"  added_mass     estimated={values(estimated[4:5])} target={values(target[4:5])}")
+    print(f"  applied_force  estimated={values(estimated[5:8])} target={values(target[5:8])}")
+    print(f"  applied_torque estimated={values(estimated[8:11])} target={values(target[8:11])}")
     print(
         f"  ladder_obs     reconstructed={values(diagnostics['reconstructed_ladder'])} "
         f"target={values(diagnostics['ladder_target'])}"

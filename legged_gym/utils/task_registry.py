@@ -90,10 +90,14 @@ class TaskRegistry():
             env_cfg, _ = self.get_cfgs(name)
         # override cfg from args (if specified)
         env_cfg, _ = update_cfg_from_args(env_cfg, None, args)
-        if getattr(args, "mode", "student") == "teacher":
+        train_mode = getattr(args, "mode", "student")
+        env_cfg.env.use_noisy_contact_precision = train_mode == "student"
+        if train_mode == "teacher":
             # Teacher consumes privileged state and height scans, never rendered depth.
             env_cfg.sensor.enable_depth_camera = False
-            print("Teacher mode: depth camera renderer disabled.")
+            print("Teacher mode: clean contact precision; depth camera renderer disabled.")
+        else:
+            print("Student mode: noisy contact precision enabled.")
         set_seed(env_cfg.seed)
         # parse sim params (convert to dict first)
         sim_params = {"sim": class_to_dict(env_cfg.sim)}
