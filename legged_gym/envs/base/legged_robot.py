@@ -2533,6 +2533,20 @@ class LeggedRobot(BaseTask):
             torch.full_like(velocity_norm, float(self.cfg.rewards.goal_speed_limit)),
             torch.full_like(velocity_norm, float(self.cfg.rewards.nonflat_goal_speed_limit)),
         )
+        nonprecise_ladder_contact = torch.any(
+            self._get_foot_contacts()
+            & self.contact_effector_on_ladder_plane
+            & ~self._get_ladder_contact_precision_mask(),
+            dim=1,
+        )
+        speed_limit = torch.where(
+            nonprecise_ladder_contact,
+            torch.full_like(
+                speed_limit,
+                float(self.cfg.rewards.nonprecise_ladder_contact_speed_limit),
+            ),
+            speed_limit,
+        )
         speed_over = torch.clamp(velocity_norm - speed_limit, min=0.)
         min_dist_decrease_speed = torch.clamp(self.min_goal_dist - goal_dist, min=0.) / self.dt
         dist_increase_speed = torch.clamp(goal_dist - self.last_goal_dist, min=0.) / self.dt
