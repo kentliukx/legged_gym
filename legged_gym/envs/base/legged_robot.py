@@ -490,6 +490,10 @@ class LeggedRobot(BaseTask):
 
             # forward depth
             self.depth_image_noisy_buf,
+
+            # Reserved for the imitation teacher. Student network slices do
+            # not consume these clean contact-precision values.
+            self.contact_precision_clean,
         ]
 
         self.obs_buf = torch.cat(obs_parts, dim=-1)

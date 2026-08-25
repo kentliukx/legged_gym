@@ -33,7 +33,9 @@ from .base_config import BaseConfig
 class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 2048
-        num_observations = 2710
+        # The final four entries are clean contact precision reserved for the
+        # imitation TeacherPolicy; Student network slices end at 2710.
+        num_observations = 2714
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
         proprioception_history_len = 10
