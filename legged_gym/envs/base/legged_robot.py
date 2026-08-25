@@ -2567,14 +2567,6 @@ class LeggedRobot(BaseTask):
             & ~self._get_ladder_contact_precision_mask(),
             dim=1,
         )
-        speed_limit = torch.where(
-            nonprecise_ladder_contact,
-            torch.full_like(
-                speed_limit,
-                float(self.cfg.rewards.nonprecise_ladder_contact_speed_limit),
-            ),
-            speed_limit,
-        )
         speed_over = torch.clamp(velocity_norm - speed_limit, min=0.)
         min_dist_decrease_speed = torch.clamp(self.min_goal_dist - goal_dist, min=0.) / self.dt
         dist_increase_speed = torch.clamp(goal_dist - self.last_goal_dist, min=0.) / self.dt
@@ -2586,6 +2578,11 @@ class LeggedRobot(BaseTask):
             float(self.cfg.rewards.progress_reward_max_difficulty_multiplier) - 1.
         )
         progress_reward = min_dist_decrease_speed * heading_gate * progress_reward_multiplier
+        progress_reward = torch.where(
+            nonprecise_ladder_contact,
+            torch.zeros_like(progress_reward),
+            progress_reward,
+        )
         return (1. - goal_reached) * (progress_reward - 1. * dist_increase_speed - 5. * speed_over) + 1 * goal_reached
 
     def _reward_heading_tracking(self):
