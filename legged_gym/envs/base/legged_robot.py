@@ -375,9 +375,13 @@ class LeggedRobot(BaseTask):
         increasing_reward_coeff = self._update_increasing_reward_coeff()
         for i in range(len(self.reward_functions)):
             name = self.reward_names[i]
-            rew = self.reward_functions[i]() * self.reward_scales[name]
+            raw_rew = self.reward_functions[i]()
+            rew = raw_rew * self.reward_scales[name]
             if name in self.increasing_reward_names:
                 rew *= increasing_reward_coeff
+            if name == "position_tracking":
+                self.position_tracking_reward_raw.copy_(raw_rew)
+                self.position_tracking_reward_scaled.copy_(rew)
             self.rew_buf += rew
             self.episode_sums[name] += rew
         if self.cfg.rewards.only_positive_rewards:
@@ -1366,6 +1370,10 @@ class LeggedRobot(BaseTask):
         self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
         self.forward_vec = to_torch([1., 0., 0.], device=self.device).repeat((self.num_envs, 1))
         self.torques = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.position_tracking_reward_raw = torch.zeros(
+            self.num_envs, dtype=torch.float, device=self.device, requires_grad=False
+        )
+        self.position_tracking_reward_scaled = torch.zeros_like(self.position_tracking_reward_raw)
         self.p_gains = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.d_gains = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.base_p_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)

@@ -197,6 +197,14 @@ def print_base_height_diagnostic(env, robot_index, step):
     )
 
 
+def print_position_tracking_reward(env, robot_index, step):
+    print(
+        f"[position tracking reward] step={step} "
+        f"raw={env.position_tracking_reward_raw[robot_index].item():.4f} "
+        f"scaled={env.position_tracking_reward_scaled[robot_index].item():.6f}"
+    )
+
+
 def print_step_distance_highwatermark(env, robot_index, step):
     if not hasattr(env, "phase_feet_step_distance_highwatermark"):
         return
@@ -500,6 +508,9 @@ def play(args):
             obs, _, rews, dones, infos = env.step(actions.detach())
             with torch.inference_mode():
                 ppo_runner.alg.actor_critic.reset(dones)
+            if (PRINT_POSITION_TRACKING_REWARD
+                    and (i + 1) % diagnostic_print_interval == 0):
+                print_position_tracking_reward(env, robot_index, i + 1)
             if PRINT_LADDER_CONTACT_PRECISION_STATS:
                 update_ladder_contact_precision_stats(
                     env, robot_index, ladder_contact_precision_totals
@@ -627,6 +638,7 @@ if __name__ == '__main__':
     PLOT_STATES = False
     PRINT_STUDENT_DIAGNOSTICS = False
     PRINT_BASE_HEIGHT = False
+    PRINT_POSITION_TRACKING_REWARD = False
     PRINT_STEP_DISTANCE_HWM = False
     PRINT_LADDER_CONTACT_PRECISION_STATS = False
     VISUALIZE_HEIGHTMAP = False
