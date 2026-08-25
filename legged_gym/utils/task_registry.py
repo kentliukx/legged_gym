@@ -90,6 +90,12 @@ class TaskRegistry():
             env_cfg, _ = self.get_cfgs(name)
         # override cfg from args (if specified)
         env_cfg, _ = update_cfg_from_args(env_cfg, None, args)
+        if getattr(args, "easy", False):
+            apply_easy = getattr(env_cfg, "apply_easy", None)
+            if apply_easy is None:
+                raise ValueError(f"Task '{name}' does not define an easy configuration")
+            apply_easy(env_cfg)
+            print("Easy mode: task-specific easy configuration enabled.")
         train_mode = getattr(args, "mode", "student")
         env_cfg.env.use_noisy_contact_precision = train_mode == "student"
         if train_mode == "teacher":

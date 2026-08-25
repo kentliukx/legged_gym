@@ -31,6 +31,18 @@
 from .base_config import BaseConfig
 
 class LeggedRobotCfg(BaseConfig):
+    @classmethod
+    def apply_easy(cls, env_cfg):
+        terrain_kwargs = env_cfg.terrain.terrain_kwargs
+        terrain_kwargs["bar_x_scale"] = (3.0, 1.0)
+        terrain_kwargs["bar_y_scale"] = (1.3, 0.65)
+        env_cfg.terrain.max_init_ladder_level = 3
+        env_cfg.domain_rand.push_robots = False
+        env_cfg.domain_rand.push_robot_foot = False
+        env_cfg.rewards.ladder_contact_precision_center_threshold = 0.03
+        env_cfg.rewards.ladder_contact_precision_effector_threshold = 1
+        env_cfg.noise.add_noise = False
+
     class env:
         num_envs = 2048
         # The final four entries are clean contact precision reserved for the
