@@ -2586,11 +2586,12 @@ class LeggedRobot(BaseTask):
             float(self.cfg.rewards.progress_reward_max_difficulty_multiplier) - 1.
         )
         progress_reward = min_dist_decrease_speed * heading_gate * progress_reward_multiplier
-        progress_reward = torch.where(
-            nonprecise_ladder_contact,
-            torch.zeros_like(progress_reward),
-            progress_reward,
-        )
+        if not self.cfg.env.ignore_nonprecision_for_progress_reward:
+            progress_reward = torch.where(
+                nonprecise_ladder_contact,
+                torch.zeros_like(progress_reward),
+                progress_reward,
+            )
         return (1. - goal_reached) * (progress_reward - 1. * dist_increase_speed - 5. * speed_over) + 1 * goal_reached
 
     def _reward_heading_tracking(self):

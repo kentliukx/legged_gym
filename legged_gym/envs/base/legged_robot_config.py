@@ -41,6 +41,7 @@ class LeggedRobotCfg(BaseConfig):
         env_cfg.domain_rand.push_robot_foot = False
         env_cfg.rewards.ladder_contact_precision_center_threshold = 0.03
         env_cfg.rewards.ladder_contact_precision_effector_threshold = 1
+        env_cfg.env.ignore_nonprecision_for_progress_reward = True
         env_cfg.noise.add_noise = False
 
     class env:
@@ -54,6 +55,7 @@ class LeggedRobotCfg(BaseConfig):
         # Set by task_registry from --mode: Teacher receives clean precision;
         # Student receives its noisy sensor counterpart.
         use_noisy_contact_precision = False
+        ignore_nonprecision_for_progress_reward = False
         debug_terrain_sampling = False
         env_spacing = 3.  # not used with heightfields/trimeshes 
         send_timeouts = True # send time out information to the algorithm
