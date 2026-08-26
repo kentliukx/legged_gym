@@ -205,6 +205,13 @@ def print_position_tracking_reward(env, robot_index, step):
     )
 
 
+def apply_forced_contact_precision_zero(observations):
+    """Temporary play-only ablation: hide precision contact from the policy."""
+    observations[..., 510:514] = 0.0
+    if observations.shape[-1] >= 2714:
+        observations[..., 2710:2714] = 0.0
+
+
 def print_step_distance_highwatermark(env, robot_index, step):
     if not hasattr(env, "phase_feet_step_distance_highwatermark"):
         return
@@ -372,6 +379,9 @@ def play(args):
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     env.draw_height_measurements = VISUALIZE_HEIGHTMAP and not teacher_mode
     obs = env.get_observations()
+    if FORCE_CONTACT_PRECISION_ZERO:
+        apply_forced_contact_precision_zero(obs)
+        print("Play ablation: precision contact inputs forced to zero.")
     # load policy
     use_default_teacher_checkpoint = (
         teacher_mode and not args.resume and args.load_run is None and args.checkpoint is None
@@ -506,6 +516,8 @@ def play(args):
             if PRINT_BASE_HEIGHT and i % diagnostic_print_interval == 0:
                 print_base_height_diagnostic(env, robot_index, i)
             obs, _, rews, dones, infos = env.step(actions.detach())
+            if FORCE_CONTACT_PRECISION_ZERO:
+                apply_forced_contact_precision_zero(obs)
             with torch.inference_mode():
                 ppo_runner.alg.actor_critic.reset(dones)
             if (PRINT_POSITION_TRACKING_REWARD
@@ -639,6 +651,7 @@ if __name__ == '__main__':
     PRINT_STUDENT_DIAGNOSTICS = False
     PRINT_BASE_HEIGHT = False
     PRINT_POSITION_TRACKING_REWARD = False
+    FORCE_CONTACT_PRECISION_ZERO = False
     PRINT_STEP_DISTANCE_HWM = False
     PRINT_LADDER_CONTACT_PRECISION_STATS = False
     VISUALIZE_HEIGHTMAP = False
