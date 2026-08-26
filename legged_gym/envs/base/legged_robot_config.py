@@ -261,8 +261,8 @@ class LeggedRobotCfg(BaseConfig):
             stand_still_contact_when_reached_goal = -0.2
 
             # Increasing rewards
-            increasing_reward_coeff = [0.5, 1.0]
-            increasing_reward_upper_reward_limit = 50
+            increasing_reward_coeff = [0.2, 1.0]
+            increasing_reward_upper_reward_limit = 30
             increasing_reward_lower_reward_limit = 0
             increasing_reward_lpf_k = 0.05
             increasing_reward_names = [
