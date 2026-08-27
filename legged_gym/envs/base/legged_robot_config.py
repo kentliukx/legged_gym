@@ -263,7 +263,7 @@ class LeggedRobotCfg(BaseConfig):
             stand_still_contact_when_reached_goal = -0.2
 
             # Increasing rewards
-            increasing_reward_coeff = [0.2, 1.0]
+            increasing_reward_coeff = [0.4, 1.0]
             increasing_reward_upper_reward_limit = 30
             increasing_reward_lower_reward_limit = 0
             increasing_reward_lpf_k = 0.05
@@ -292,7 +292,7 @@ class LeggedRobotCfg(BaseConfig):
             # natural movement
             flat_orientation_when_flat = -5.0
             base_height = -20.0
-            dof_pos_limits = -5
+            dof_pos_limits = -10
 
             # Unused rewards
             heading_tracking = 0
