@@ -259,7 +259,7 @@ class LeggedRobotCfg(BaseConfig):
             foot_slippage = -0.2
             foot_clearance = -0.2
             # reached goal
-            stand_still_when_reached_goal = -0.2
+            stand_still_when_reached_goal = -0.5
             stand_still_contact_when_reached_goal = -0.2
 
             # Increasing rewards
@@ -325,7 +325,7 @@ class LeggedRobotCfg(BaseConfig):
         progress_reward_max_difficulty_multiplier = 2
         contact_force_threshold = 1.0
         phase_contact_force_threshold = 20.0
-        foot_clearance_target = 0.1
+        foot_clearance_target = 0.15
         ladder_side_clearance_threshold = 0.1
         ladder_contact_precision_center_threshold = 0.02
         ladder_contact_precision_effector_threshold = 0.04
