@@ -2489,10 +2489,23 @@ class LeggedRobot(BaseTask):
             self.contact_precision_noisy.copy_(self.contact_precision_clean)
             return self.contact_precision_clean
 
-        max_probability = float(self.cfg.noise.noise_scales.contact_precision_flip_prob)
-        if not 0.0 <= max_probability <= 1.0:
-            raise ValueError("contact_precision_flip_prob must lie in [0, 1]")
-        flip_probability = max_probability * self._get_noise_level()
+        false_positive_probability = float(
+            self.cfg.noise.noise_scales.contact_precision_false_positive_prob
+        )
+        false_negative_probability = float(
+            self.cfg.noise.noise_scales.contact_precision_false_negative_prob
+        )
+        if not (0.0 <= false_positive_probability <= 1.0
+                and 0.0 <= false_negative_probability <= 1.0):
+            raise ValueError(
+                "contact precision false-positive and false-negative probabilities must lie in [0, 1]"
+            )
+        noise_level = self._get_noise_level()
+        flip_probability = torch.where(
+            self.contact_precision_clean > 0.5,
+            torch.full_like(self.contact_precision_clean, false_negative_probability * noise_level),
+            torch.full_like(self.contact_precision_clean, false_positive_probability * noise_level),
+        )
         flips = torch.rand_like(self.contact_precision_clean) < flip_probability
         self.contact_precision_noisy.copy_(
             torch.where(flips, 1.0 - self.contact_precision_clean, self.contact_precision_clean)

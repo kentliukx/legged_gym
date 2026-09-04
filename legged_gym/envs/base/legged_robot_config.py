@@ -363,9 +363,10 @@ class LeggedRobotCfg(BaseConfig):
             depth_edge_dilation_distance_range = [0.1, 2.0]
             # Larger values keep far edges at the far dilation and steepen near-range growth.
             depth_edge_dilation_distance_exponent = 8.0
-            # Maximum per-foot flip probability for Student contact precision.
-            # It is scaled by the common noise curriculum level.
-            contact_precision_flip_prob = 0.1
+            # Student contact-precision sensor errors at noise level 1.0.
+            # Both rates are scaled by the common noise curriculum level.
+            contact_precision_false_positive_prob = 0.01  # clean 0 -> noisy 1
+            contact_precision_false_negative_prob = 0.10  # clean 1 -> noisy 0
 
     # viewer camera:
     class viewer:
