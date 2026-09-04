@@ -2602,7 +2602,7 @@ class LeggedRobot(BaseTask):
         if not self.cfg.env.ignore_nonprecision_for_progress_reward:
             progress_reward = torch.where(
                 nonprecise_ladder_contact,
-                torch.zeros_like(progress_reward),
+                -progress_reward,
                 progress_reward,
             )
         return (1. - goal_reached) * (progress_reward - 1. * dist_increase_speed - 5. * speed_over) + 1 * goal_reached
