@@ -109,6 +109,35 @@ def show_height_comparison(frame_queue, height_shape):
     plt.close(figure)
 
 
+def show_contact_precision_history(times, precision_history):
+    """Display the first 10 seconds of clean precision contact."""
+    import matplotlib.pyplot as plt
+
+    labels = ("FL", "FR", "RL", "RR", "Total")
+    plot_values = np.concatenate(
+        (precision_history, precision_history.sum(axis=1, keepdims=True)),
+        axis=1,
+    )
+    figure, axes = plt.subplots(
+        5,
+        1,
+        sharex=True,
+        figsize=(10, 7),
+        num="Contact precision (0-10 s)",
+    )
+    for value_index, (axis, label) in enumerate(zip(axes, labels)):
+        axis.step(times, plot_values[:, value_index], where="post", linewidth=1.2)
+        axis.set_ylabel(label)
+        max_value = 4.0 if label == "Total" else 1.0
+        axis.set_yticks(np.arange(max_value + 1.0))
+        axis.set_ylim(-0.15, max_value + 0.15)
+        axis.grid(axis="x", alpha=0.25)
+    axes[-1].set_xlabel("Simulation time [s]")
+    figure.suptitle("Clean contact precision")
+    figure.tight_layout()
+    plt.show()
+
+
 def get_student_diagnostics(actor_critic, observations, robot_index):
     if (not hasattr(actor_critic, "estimator")
             or not hasattr(actor_critic, "reconstructed_height_obs")
@@ -460,6 +489,10 @@ def play(args):
     depth_frame_queue = None
     height_process = None
     height_frame_queue = None
+    contact_precision_plot_process = None
+    contact_precision_times = []
+    contact_precision_history = []
+    contact_precision_plot_duration_s = 10.0
     mp_context = None
     if VISUALIZE_DEPTH_CAMERA and not args.headless and env.cfg.sensor.enable_depth_camera:
         mp_context = mp.get_context("spawn")
@@ -495,6 +528,14 @@ def play(args):
 
     try:
         for i in range(100*int(env.max_episode_length)):
+            simulation_time = i * env.dt
+            if (PLOT_CONTACT_PRECISION and not args.headless
+                    and simulation_time <= contact_precision_plot_duration_s):
+                # Read the clean environment signal, independent of Student noise/ablations.
+                contact_precision_times.append(simulation_time)
+                contact_precision_history.append(
+                    env.contact_precision_clean[robot_index].detach().cpu().numpy().copy()
+                )
             with torch.inference_mode():
                 actions = policy(obs.detach())
                 if (not teacher_mode and (PRINT_STUDENT_DIAGNOSTICS
@@ -518,6 +559,20 @@ def play(args):
             obs, _, rews, dones, infos = env.step(actions.detach())
             if FORCE_CONTACT_PRECISION_ZERO:
                 apply_forced_contact_precision_zero(obs)
+            if (PLOT_CONTACT_PRECISION and not args.headless
+                    and contact_precision_plot_process is None
+                    and simulation_time >= contact_precision_plot_duration_s):
+                if mp_context is None:
+                    mp_context = mp.get_context("spawn")
+                contact_precision_plot_process = mp_context.Process(
+                    target=show_contact_precision_history,
+                    args=(
+                        np.asarray(contact_precision_times, dtype=np.float32),
+                        np.asarray(contact_precision_history, dtype=np.float32),
+                    ),
+                    daemon=True,
+                )
+                contact_precision_plot_process.start()
             with torch.inference_mode():
                 ppo_runner.alg.actor_critic.reset(dones)
             if (PRINT_POSITION_TRACKING_REWARD
@@ -648,6 +703,7 @@ if __name__ == '__main__':
     MOVE_CAMERA = False
     VISUALIZE_DEPTH_CAMERA = False
     PLOT_STATES = False
+    PLOT_CONTACT_PRECISION = False
     PRINT_STUDENT_DIAGNOSTICS = False
     PRINT_BASE_HEIGHT = False
     PRINT_POSITION_TRACKING_REWARD = False
