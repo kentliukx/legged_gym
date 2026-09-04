@@ -236,9 +236,14 @@ def print_position_tracking_reward(env, robot_index, step):
 
 def apply_forced_contact_precision_zero(observations):
     """Temporary play-only ablation: hide precision contact from the policy."""
-    observations[..., 510:514] = 0.0
-    if observations.shape[-1] >= 2714:
-        observations[..., 2710:2714] = 0.0
+    # FL/FR sensor values now live in the last two dimensions of noisy
+    # proprioception and in every 44-D proprioception-history frame.
+    observations[..., 87:89] = 0.0
+    history = observations[..., 89:529].view(*observations.shape[:-1], 10, 44)
+    history[..., 42:44] = 0.0
+    observations[..., 532:536] = 0.0
+    if observations.shape[-1] >= 2736:
+        observations[..., 2732:2736] = 0.0
 
 
 def print_step_distance_highwatermark(env, robot_index, step):

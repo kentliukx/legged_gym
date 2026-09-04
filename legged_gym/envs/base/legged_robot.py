@@ -448,9 +448,14 @@ class LeggedRobot(BaseTask):
             curr_proprio_clean,
             self._get_proprioception_noise_scale(),
         )
+        contact_precision = self._get_contact_precision_observation()
+        # The Student receives FL/FR precision as a noisy proprioceptive
+        # sensor, so its full temporal history includes these measurements.
+        curr_proprio_noisy = torch.cat(
+            (curr_proprio_noisy, contact_precision[:, :2]), dim=-1
+        )
         self._update_proprioception_history(curr_proprio_noisy)
         proprioception_history = self.proprioception_history_buf.reshape(self.num_envs, -1)
-        contact_precision = self._get_contact_precision_observation()
         height_scan = torch.clip(
                 self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1) * self.obs_scales.height_measurements
         ladder_obs = self._get_ladder_observations()
@@ -1384,11 +1389,12 @@ class LeggedRobot(BaseTask):
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.proprioception_dim = 3 + 3 + 3 * self.num_actions
+        self.proprioception_history_dim = self.proprioception_dim + 2
         self.proprioception_history_len = int(self.cfg.env.proprioception_history_len)
         self.proprioception_history_buf = torch.zeros(
             self.num_envs,
             self.proprioception_history_len,
-            self.proprioception_dim,
+            self.proprioception_history_dim,
             dtype=torch.float,
             device=self.device,
             requires_grad=False,
