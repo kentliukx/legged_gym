@@ -444,6 +444,7 @@ def generate_ladder_bar_mesh(env_length,
     center_y = env_width * 0.5
 
     bar_spacing = _lerp_range(bar_spacing, difficulty)
+    bar_position_noise_std = _lerp_range(bar_position_noise_std, difficulty)
     bar_count = int(round(_lerp_range(bar_count, difficulty)))
     ladder_angle = _lerp_range(ladder_angle, difficulty)
     bar_x_scale = _lerp_range_by_level(
