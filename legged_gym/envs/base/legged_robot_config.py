@@ -112,7 +112,11 @@ class LeggedRobotCfg(BaseConfig):
             "bar_mesh_file": "{LEGGED_GYM_ROOT_DIR}/resources/terrains/round_bar.STL",
             "side_bar_mesh_file": "{LEGGED_GYM_ROOT_DIR}/resources/terrains/side_bar.STL",
             "bar_spacing": (0.15, 0.25),
-            "bar_position_noise_std": 0.01,
+            "bar_position_noise_std": 0.02,
+            # Minimum center-to-center distance along the ladder plane after
+            # per-rung position noise is sampled.
+            "min_bar_spacing": 0.12,
+            "max_bar_spacing": 0.28,
             "bar_count": (8, 10),
             "ladder_angle": (10, 80),
             "bar_x_scale": (1.0, 1.0),
