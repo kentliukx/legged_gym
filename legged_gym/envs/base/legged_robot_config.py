@@ -326,7 +326,7 @@ class LeggedRobotCfg(BaseConfig):
         goal_radius = 0.15
         goal_speed_limit = 0.4
         nonflat_goal_speed_limit = 0.3
-        progress_reward_max_difficulty_multiplier = 2
+        progress_reward_max_difficulty_multiplier = 3
         contact_force_threshold = 1.0
         phase_contact_force_threshold = 20.0
         foot_clearance_target = 0.15
