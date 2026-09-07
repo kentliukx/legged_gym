@@ -2601,8 +2601,15 @@ class LeggedRobot(BaseTask):
         self.last_goal_dist[:] = goal_dist
         heading_error = torch.atan2(goal_dir[:, 1], goal_dir[:, 0])
         heading_gate = torch.clamp(torch.cos(3. * heading_error), min=0.)
-        progress_reward_multiplier = 1. + self.difficulty * (
+        ladder_progress_reward_multiplier = 1. + self.difficulty * (
             float(self.cfg.rewards.progress_reward_max_difficulty_multiplier) - 1.
+        )
+        # Tile difficulty scales progress only after the base has entered the
+        # ladder span; approaching a hard ladder still uses the nominal scale.
+        progress_reward_multiplier = torch.where(
+            self.curr_climbing_ladder,
+            ladder_progress_reward_multiplier,
+            torch.ones_like(ladder_progress_reward_multiplier),
         )
         progress_reward = min_dist_decrease_speed * heading_gate * progress_reward_multiplier
         if not self.cfg.env.ignore_nonprecision_for_progress_reward:
