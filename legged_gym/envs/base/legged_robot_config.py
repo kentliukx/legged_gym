@@ -117,7 +117,7 @@ class LeggedRobotCfg(BaseConfig):
             # per-rung position noise is sampled.
             "min_bar_spacing": 0.12,
             "max_bar_spacing": 0.28,
-            "bar_count": (8, 10),
+            "bar_count": (7, 8),
             "ladder_angle": (10, 80),
             "bar_x_scale": (1.0, 1.0),
             "bar_x_scale_min_level": 5,
