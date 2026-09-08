@@ -46,9 +46,8 @@ class LeggedRobotCfg(BaseConfig):
 
     class env:
         num_envs = 2048
-        # The final four entries are clean contact precision reserved for the
-        # imitation TeacherPolicy; Student network slices end at 2732.
-        num_observations = 2736
+        # Legacy Student layout used by the student_refactor network.
+        num_observations = 2710
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
         proprioception_history_len = 10
