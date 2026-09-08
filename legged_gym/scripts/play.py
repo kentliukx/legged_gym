@@ -149,10 +149,11 @@ def get_student_diagnostics(actor_critic, observations, robot_index):
 
     split_obs = actor_critic._split_observations(observations)
     estimator_raw = actor_critic.estimator(actor_critic._encode_history(split_obs["proprio_history"]))
+    precision_target_key = "contact_precision"
     estimated_target = torch.cat(
         (
             split_obs["base_lin_vel"],
-            split_obs["clean_contact_precision"],
+            split_obs[precision_target_key],
             split_obs["friction"],
             split_obs["added_mass"],
             split_obs["applied_force"],
@@ -163,8 +164,9 @@ def get_student_diagnostics(actor_critic, observations, robot_index):
     return {
         "estimated": estimator_raw[robot_index].detach(),
         "estimated_target": estimated_target[robot_index].detach(),
-        "contact_precision": split_obs["contact_precision"][robot_index].detach(),
-        "clean_contact_precision": split_obs["clean_contact_precision"][robot_index].detach(),
+        "precision_input": None,
+        "precision_target": split_obs[precision_target_key][robot_index].detach(),
+        "precision_target_label": "clean_precision_target",
         "reconstructed_height": actor_critic.reconstructed_height_obs[robot_index].detach(),
         "reconstructed_height_target": split_obs["height_scan"][robot_index].detach(),
         "reconstructed_ladder": actor_critic.reconstructed_ladder_obs[robot_index].detach(),
@@ -192,11 +194,16 @@ def print_student_diagnostics(diagnostics, env, robot_index, step):
     target = diagnostics["estimated_target"]
     print(f"\n[student diagnostics] step={step}")
     print(f"  base_lin_vel   estimated={values(estimated[0:3])} target={values(target[0:3])}")
-    print(f"  contact_precision noisy_input={values(diagnostics['contact_precision'])}")
+    if diagnostics["precision_input"] is not None:
+        print(
+            "  contact_precision noisy_input="
+            f"{values(diagnostics['precision_input'][robot_index])}"
+        )
     print(
-        "  contact_precision reconstructed="
+        "  contact reconstructed="
         f"{values(torch.sigmoid(estimated[3:7]))} "
-        f"clean_target={values(diagnostics['clean_contact_precision'])}"
+        f"{diagnostics['precision_target_label']}="
+        f"{values(diagnostics['precision_target'])}"
     )
     print(f"  friction       estimated={values(estimated[7:8])} target={values(target[7:8])}")
     print(f"  added_mass     estimated={values(estimated[8:9])} target={values(target[8:9])}")
@@ -243,6 +250,8 @@ def print_position_tracking_reward(env, robot_index, step):
 
 def apply_forced_contact_precision_zero(observations):
     """Temporary play-only ablation: hide precision contact from the policy."""
+    if observations.shape[-1] < 2736:
+        return
     # FL/FR sensor values now live in the last two dimensions of noisy
     # proprioception and in every 44-D proprioception-history frame.
     observations[..., 87:89] = 0.0
