@@ -2607,9 +2607,12 @@ class LeggedRobot(BaseTask):
         )
         progress_reward = min_dist_decrease_speed * heading_gate * progress_reward_multiplier
         if not self.cfg.env.ignore_nonprecision_for_progress_reward:
+            nonprecision_progress_coefficient = -self._get_mean_terrain_level_scale(
+                self.cfg.rewards.nonprecision_progress_reward_level_range
+            )
             progress_reward = torch.where(
                 nonprecise_ladder_contact,
-                -progress_reward,
+                nonprecision_progress_coefficient * progress_reward,
                 progress_reward,
             )
         return (1. - goal_reached) * (progress_reward - 1. * dist_increase_speed - 5. * speed_over) + 1 * goal_reached

@@ -326,6 +326,9 @@ class LeggedRobotCfg(BaseConfig):
         goal_speed_limit = 0.4
         nonflat_goal_speed_limit = 0.3
         progress_reward_max_difficulty_multiplier = 4
+        # In non-easy modes, ramp the non-precise-contact progress penalty
+        # from 0 to -1 as the global mean ladder level moves from 3 to 5.
+        nonprecision_progress_reward_level_range = [3, 5]
         contact_force_threshold = 1.0
         phase_contact_force_threshold = 20.0
         foot_clearance_target = 0.15
