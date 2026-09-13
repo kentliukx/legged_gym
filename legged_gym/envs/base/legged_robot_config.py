@@ -252,7 +252,7 @@ class LeggedRobotCfg(BaseConfig):
             ladder_side_clearance = -0.2
             ladder_contact_precision = 0.1
             collision = -1
-            feet_contact_forces = -0.01
+            feet_contact_forces = -0.005
             excess_step_length = -5
             # gait related
             feet_air_time = 1
@@ -315,7 +315,7 @@ class LeggedRobotCfg(BaseConfig):
         base_height_target = 0.35
         ladder_base_height_target_lowest = 0.35
         ladder_base_height_target_highest = 0.25
-        max_contact_force = 150. # forces above this value are penalized
+        max_contact_force = 200. # forces above this value are penalized
         foot_slip_threshold = 1.0
         half_phase_lower = 0.3
         half_phase_upper = 0.6

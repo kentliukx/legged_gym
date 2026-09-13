@@ -2607,7 +2607,7 @@ class LeggedRobot(BaseTask):
         )
         progress_reward = min_dist_decrease_speed * heading_gate * progress_reward_multiplier
         if not self.cfg.env.ignore_nonprecision_for_progress_reward:
-            nonprecision_progress_coefficient = -self._get_mean_terrain_level_scale(
+            nonprecision_progress_coefficient = 1 - 2 * self._get_mean_terrain_level_scale(
                 self.cfg.rewards.nonprecision_progress_reward_level_range
             )
             progress_reward = torch.where(
@@ -2790,6 +2790,9 @@ class LeggedRobot(BaseTask):
         return (torch.norm(self.contact_forces[:, 0, :], dim=-1) > 0.1).float()
 
     def _reward_feet_contact_forces(self):
-        # penalize high contact forces
-        return (torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)) \
-            * (~self.curr_climbing_ladder).float()
+        # Penalize contact forces above the threshold on both flat ground and ladders.
+        return torch.sum(
+            (torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1)
+             - self.cfg.rewards.max_contact_force).clip(min=0.),
+            dim=1,
+        )
