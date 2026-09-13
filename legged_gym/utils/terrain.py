@@ -118,6 +118,7 @@ class Terrain:
                                       max_bar_spacing=None,
                                       bar_count=10,
                                       ladder_angle=0.0,
+                                      ladder_angles=None,
                                       bar_x_scale=(3.0, 1.0),
                                       bar_x_scale_min_level=None,
                                       bar_y_scale=1.0,
@@ -148,6 +149,11 @@ class Terrain:
         all_ladder_triangle_masks = []
         vertex_offset = 0
         self.rough_probability = float(np.clip(rough_probability, 0.0, 1.0))
+        if ladder_angles is not None and len(ladder_angles) < self.num_ladder_rows:
+            raise ValueError(
+                "terrain_kwargs.ladder_angles must provide at least one angle "
+                "for every ladder curriculum level"
+            )
         shared_bar_spacing_by_col = [_sample_range(bar_spacing) for _ in range(self.num_cols)]
 
         for k in range(self.cfg.num_sub_terrains):
@@ -179,7 +185,13 @@ class Terrain:
                                   if self.cfg.curriculum and self.cfg.num_rows > 2
                                   else difficulty)
                 tile_bar_y_scale_multiplier = _sample_range(bar_y_scale_random_multiplier)
-                tile_ladder_angle = _lerp_range(ladder_angle, row_difficulty)
+                # Ladder rows map directly to the configured curriculum angles.
+                # The fallback retains the legacy continuous angle range behavior.
+                tile_ladder_angle = (
+                    float(ladder_angles[i - 1])
+                    if ladder_angles is not None
+                    else _lerp_range(ladder_angle, row_difficulty)
+                )
                 self.ladder_bar_spacing[i, j] = tile_bar_spacing
                 self.ladder_angles[i, j] = tile_ladder_angle
                 bar_centers, prepared_bar_vertices, side_bar_segments, side_bar_radius_xy, tile_bar_y_scale, local_vertices, local_triangles, ladder_triangle_count, platform_center = generate_ladder_bar_mesh(

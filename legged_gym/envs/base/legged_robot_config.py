@@ -118,6 +118,9 @@ class LeggedRobotCfg(BaseConfig):
             "max_bar_spacing": 0.28,
             "bar_count": (7, 8),
             "ladder_angle": (10, 80),
+            # One angle per ladder curriculum level. Keep the early levels
+            # close to the original spacing, then make the steep end denser.
+            "ladder_angles": (10.0, 20, 30, 40, 50, 60, 70, 75, 80),
             "bar_x_scale": (1.0, 1.0),
             "bar_x_scale_min_level": 5,
             "bar_y_scale": (0.65, 0.65),
