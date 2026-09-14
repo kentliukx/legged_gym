@@ -247,7 +247,6 @@ class LeggedRobotCfg(BaseConfig):
         class scales:
             # Fixed rewards
             # Primary task rewards
-            alive = 2
             position_tracking = 5
             # on ladder
             ladder_side_clearance = -0.2
@@ -268,7 +267,7 @@ class LeggedRobotCfg(BaseConfig):
 
             # Increasing rewards
             increasing_reward_coeff = [0.4, 1.0]
-            increasing_reward_upper_reward_limit = 30
+            increasing_reward_upper_reward_limit = 20
             increasing_reward_lower_reward_limit = 0
             increasing_reward_lpf_k = 0.05
             increasing_reward_names = [
@@ -297,6 +296,18 @@ class LeggedRobotCfg(BaseConfig):
             flat_orientation_when_flat = -5.0
             base_height = -20.0
             dof_pos_limits = -10
+
+            # Decreasing rewards use the same global return curriculum as the
+            # increasing rewards, but decay selected terms as training improves.
+            decreasing_reward_coeff = [1.0, 0.5]
+            decreasing_reward_upper_reward_limit = 20
+            decreasing_reward_lower_reward_limit = 0
+            decreasing_reward_lpf_k = 0.05
+            decreasing_reward_names = [
+                "alive"
+            ]
+            # encourage the robot to stay alive
+            alive = 2
 
             # Unused rewards
             heading_tracking = 0

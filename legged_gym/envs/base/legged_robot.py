@@ -373,12 +373,15 @@ class LeggedRobot(BaseTask):
         """
         self.rew_buf[:] = 0.
         increasing_reward_coeff = self._update_increasing_reward_coeff()
+        decreasing_reward_coeff = self._update_decreasing_reward_coeff()
         for i in range(len(self.reward_functions)):
             name = self.reward_names[i]
             raw_rew = self.reward_functions[i]()
             rew = raw_rew * self.reward_scales[name]
             if name in self.increasing_reward_names:
                 rew *= increasing_reward_coeff
+            if name in self.decreasing_reward_names:
+                rew *= decreasing_reward_coeff
             if name == "position_tracking":
                 self.position_tracking_reward_raw.copy_(raw_rew)
                 self.position_tracking_reward_scaled.copy_(rew)
@@ -413,6 +416,27 @@ class LeggedRobot(BaseTask):
             self.increasing_reward_lpf_k * target_coeff
         )
         return self.increasing_reward_coeff_buf
+
+    def _update_decreasing_reward_coeff(self):
+        """Linearly decrease selected reward coefficients from the global mean episode return."""
+        if self.increasing_reward_episode_return_count == 0:
+            return self.decreasing_reward_coeff_buf
+        start, end = self.decreasing_reward_coeff
+        mean_episode_reward = torch.mean(
+            self.increasing_reward_episode_returns[:self.increasing_reward_episode_return_count]
+        )
+        reward_span = self.decreasing_reward_upper_reward_limit - self.decreasing_reward_lower_reward_limit
+        progress = torch.clamp(
+            (mean_episode_reward - self.decreasing_reward_lower_reward_limit) / reward_span,
+            min=0.0,
+            max=1.0,
+        )
+        target_coeff = start + (end - start) * progress
+        target_coeff = torch.minimum(target_coeff, self.decreasing_reward_coeff_buf)
+        self.decreasing_reward_coeff_buf.mul_(1.0 - self.decreasing_reward_lpf_k).add_(
+            self.decreasing_reward_lpf_k * target_coeff
+        )
+        return self.decreasing_reward_coeff_buf
 
     def _record_increasing_reward_episode_returns(self, env_ids):
         """Append completed returns to the same 100-episode window used by runner logging."""
@@ -1746,6 +1770,24 @@ class LeggedRobot(BaseTask):
         self.increasing_reward_names = set(self.reward_scales.pop("increasing_reward_names", []))
         self.increasing_reward_coeff_buf = torch.tensor(
             float(self.increasing_reward_coeff[0]), dtype=torch.float, device=self.device
+        )
+        self.decreasing_reward_coeff = self.reward_scales.pop("decreasing_reward_coeff", [1.0, 1.0])
+        if len(self.decreasing_reward_coeff) != 2:
+            raise ValueError("rewards.scales.decreasing_reward_coeff must contain [start, end].")
+        self.decreasing_reward_lower_reward_limit = float(
+            self.reward_scales.pop("decreasing_reward_lower_reward_limit", 0.0)
+        )
+        self.decreasing_reward_upper_reward_limit = float(
+            self.reward_scales.pop("decreasing_reward_upper_reward_limit", 1.0)
+        )
+        self.decreasing_reward_lpf_k = float(self.reward_scales.pop("decreasing_reward_lpf_k", 1.0))
+        if self.decreasing_reward_upper_reward_limit <= self.decreasing_reward_lower_reward_limit:
+            raise ValueError("decreasing_reward_upper_reward_limit must exceed the lower limit.")
+        if not 0.0 <= self.decreasing_reward_lpf_k <= 1.0:
+            raise ValueError("decreasing_reward_lpf_k must be within [0, 1].")
+        self.decreasing_reward_names = set(self.reward_scales.pop("decreasing_reward_names", []))
+        self.decreasing_reward_coeff_buf = torch.tensor(
+            float(self.decreasing_reward_coeff[0]), dtype=torch.float, device=self.device
         )
         self.episode_return_sums = torch.zeros(
             self.num_envs, dtype=torch.float, device=self.device, requires_grad=False
