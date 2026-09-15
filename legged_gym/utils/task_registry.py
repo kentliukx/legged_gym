@@ -96,6 +96,9 @@ class TaskRegistry():
                 raise ValueError(f"Task '{name}' does not define an easy configuration")
             apply_easy(env_cfg)
             print("Easy mode: task-specific easy configuration enabled.")
+        # Positive-only clipping is reserved for the explicitly requested
+        # easy curriculum; regular training must retain negative returns.
+        env_cfg.rewards.only_positive_rewards = bool(getattr(args, "easy", False))
         train_mode = getattr(args, "mode", "student")
         env_cfg.env.use_noisy_contact_precision = train_mode == "student"
         if train_mode == "teacher":

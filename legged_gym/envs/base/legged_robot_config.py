@@ -41,6 +41,7 @@ class LeggedRobotCfg(BaseConfig):
         env_cfg.domain_rand.push_robot_foot = False
         env_cfg.rewards.ladder_contact_precision_center_threshold = 0.03
         env_cfg.rewards.ladder_contact_precision_effector_threshold = 1
+        env_cfg.rewards.only_positive_rewards = True
         env_cfg.env.ignore_nonprecision_for_progress_reward = True
         env_cfg.noise.add_noise = False
 
@@ -319,7 +320,7 @@ class LeggedRobotCfg(BaseConfig):
             feet_stumble = 0.0
             symmetry_torque = -0
 
-        only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
+        only_positive_rewards = False # --easy enables clipping negative total rewards to zero.
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.
