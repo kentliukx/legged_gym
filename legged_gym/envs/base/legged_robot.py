@@ -2415,7 +2415,7 @@ class LeggedRobot(BaseTask):
         ladder_x_max = torch.maximum(ladder_origins[:, 0], last_bar_x)
         self.curr_climbing_ladder[:] = (
             (bar_counts > 0)
-            & (self.root_states[:, 0] >= ladder_x_min)
+            & (self.root_states[:, 0] >= ladder_x_min - 0.4)
             & (self.root_states[:, 0] <= ladder_x_max)
         )
         climbing_direction_x = last_bar_x - ladder_origins[:, 0]
