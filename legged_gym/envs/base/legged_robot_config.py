@@ -253,7 +253,6 @@ class LeggedRobotCfg(BaseConfig):
             ladder_side_clearance = -0.2
             ladder_contact_precision = 0.1
             collision = -1
-            feet_contact_forces = -0.01
             excess_step_length = -5
             # gait related
             feet_air_time = 1
@@ -311,6 +310,7 @@ class LeggedRobotCfg(BaseConfig):
             alive = 2
 
             # Unused rewards
+            feet_contact_forces = 0
             heading_tracking = 0
             termination = -0.0
             tracking_lin_vel = 0.0
