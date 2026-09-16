@@ -36,6 +36,7 @@ class LeggedRobotCfg(BaseConfig):
         terrain_kwargs = env_cfg.terrain.terrain_kwargs
         terrain_kwargs["bar_x_scale"] = (3.0, 1.0)
         terrain_kwargs["bar_y_scale"] = (1.3, 0.65)
+        terrain_kwargs["bar_y_scale_min_level"] = 7
         env_cfg.terrain.max_init_ladder_level = 3
         env_cfg.domain_rand.push_robots = False
         env_cfg.domain_rand.push_robot_foot = False
@@ -122,9 +123,9 @@ class LeggedRobotCfg(BaseConfig):
             "ladder_angle": (10, 80),
             "bar_x_scale": (1.0, 1.0),
             "bar_x_scale_min_level": 5,
-            "bar_y_scale": (0.65, 0.65),
+            "bar_y_scale": (1, 0.65),
             "bar_y_scale_random_multiplier": (0.8, 1.3),
-            "bar_y_scale_min_level": 7,
+            "bar_y_scale_min_level": 3,
             "bar_y_scale_curve_power": 0.5,
             "platform_length": 2,
             "platform_width": 1.5,
