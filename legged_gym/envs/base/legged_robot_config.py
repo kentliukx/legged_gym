@@ -32,7 +32,7 @@ from .base_config import BaseConfig
 
 class LeggedRobotCfg(BaseConfig):
     @classmethod
-    def apply_easy(cls, env_cfg):
+    def apply_easy(cls, env_cfg, train_cfg):
         terrain_kwargs = env_cfg.terrain.terrain_kwargs
         terrain_kwargs["bar_x_scale"] = (3.0, 1.0)
         terrain_kwargs["bar_y_scale"] = (1.3, 0.65)
@@ -44,6 +44,7 @@ class LeggedRobotCfg(BaseConfig):
         env_cfg.rewards.only_positive_rewards = True
         env_cfg.env.ignore_nonprecision_for_progress_reward = True
         env_cfg.noise.add_noise = False
+        train_cfg.algorithm.imitation_loss_coef = 0.01
 
     class env:
         num_envs = 2048
@@ -437,6 +438,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         lam = 0.95
         desired_kl = 0.01
         max_grad_norm = 1.
+        imitation_loss_coef = 0.0
         estimator_loss_coef = 1.0
         ladder_reconstruction_loss_coef = 1.0
         height_reconstruction_loss_coef = 1.0

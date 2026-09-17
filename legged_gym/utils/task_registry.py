@@ -87,14 +87,16 @@ class TaskRegistry():
             raise ValueError(f"Task with name: {name} was not registered")
         if env_cfg is None:
             # load config files
-            env_cfg, _ = self.get_cfgs(name)
+            env_cfg, train_cfg = self.get_cfgs(name)
+        else:
+            _, train_cfg = self.get_cfgs(name)
         # override cfg from args (if specified)
         env_cfg, _ = update_cfg_from_args(env_cfg, None, args)
         if getattr(args, "easy", False):
             apply_easy = getattr(env_cfg, "apply_easy", None)
             if apply_easy is None:
                 raise ValueError(f"Task '{name}' does not define an easy configuration")
-            apply_easy(env_cfg)
+            apply_easy(env_cfg, train_cfg)
             print("Easy mode: task-specific easy configuration enabled.")
         # Positive-only clipping is reserved for the explicitly requested
         # easy curriculum; regular training must retain negative returns.
