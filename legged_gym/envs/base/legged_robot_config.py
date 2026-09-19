@@ -267,8 +267,8 @@ class LeggedRobotCfg(BaseConfig):
             stand_still_contact_when_reached_goal = -0.2
 
             # Increasing rewards
-            increasing_reward_coeff = [0.4, 1.0]
-            increasing_reward_upper_reward_limit = 20
+            increasing_reward_coeff = [0.3, 1.0]
+            increasing_reward_upper_reward_limit = 15
             increasing_reward_lower_reward_limit = 0
             increasing_reward_lpf_k = 0.05
             increasing_reward_names = [
@@ -301,7 +301,7 @@ class LeggedRobotCfg(BaseConfig):
             # Decreasing rewards use the same global return curriculum as the
             # increasing rewards, but decay selected terms as training improves.
             decreasing_reward_coeff = [1.0, 0.5]
-            decreasing_reward_upper_reward_limit = 20
+            decreasing_reward_upper_reward_limit = 15
             decreasing_reward_lower_reward_limit = 0
             decreasing_reward_lpf_k = 0.05
             decreasing_reward_names = [
@@ -339,7 +339,7 @@ class LeggedRobotCfg(BaseConfig):
         goal_radius = 0.15
         goal_speed_limit = 0.4
         nonflat_goal_speed_limit = 0.3
-        progress_reward_max_difficulty_multiplier = 4
+        progress_reward_max_difficulty_multiplier = 2
         # In non-easy modes, ramp the non-precise-contact progress penalty
         # from 0 to -1 as the global mean ladder level moves from 3 to 5.
         nonprecision_progress_reward_level_range = [3, 5]
